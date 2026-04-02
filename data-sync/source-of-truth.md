@@ -98,15 +98,15 @@ Hub Manage owns directory entries with bidirectional sync back to Company.
 
 Form owns form definitions, templates, marking matrices, and referral form results.
 
-| Model                        | Syncs To                |
-| ---------------------------- | ----------------------- |
-| Form                         | screen, monitor         |
-| FormTemplate                 | screen, monitor, manage |
-| MarkingMatrix                | screen, monitor, manage |
-| MasterForm                   | monitor, screen, manage |
-| ReferralForm                 | dynamic (based on `source` attribute — screen or monitor) |
-| ReferralFormPredictedOutcome | screen                  |
-| ReferralFormPredictFitOutcome | screen                 |
+| Model                         | Syncs To                                                  |
+| ----------------------------- | --------------------------------------------------------- |
+| Form                          | screen, monitor                                           |
+| FormTemplate                  | screen, monitor, manage                                   |
+| MarkingMatrix                 | screen, monitor, manage                                   |
+| MasterForm                    | monitor, screen, manage                                   |
+| ReferralForm                  | dynamic (based on `source` attribute — screen or monitor) |
+| ReferralFormPredictedOutcome  | screen                                                    |
+| ReferralFormPredictFitOutcome | screen                                                    |
 
 ### Manage Service — Case Management
 
@@ -135,10 +135,10 @@ No models with `AwsWrapper::Syncable`.
 
 These services do not participate in the SNS/SQS data sync:
 
-| Service    | Role |
-| ---------- | ---- |
-| Billing    | No sync — standalone |
-| Assessment | No sync — standalone |
+| Service    | Role                          |
+| ---------- | ----------------------------- |
+| Billing    | No sync — standalone          |
+| Assessment | No sync — standalone          |
 | Reports    | No sync — read-only reporting |
 
 ## Data Flow Diagram
