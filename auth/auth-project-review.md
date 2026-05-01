@@ -37,6 +37,12 @@ Internal roles:
 - administrator
 - global_administrator
 
+| Slug                   | Who it is                                | What policies let them do                                                                  |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `standard_internal`    | Regular staff                            | Log into internal apps, use features, **not** admin screens                                |
+| `administrator`        | Admin on one or more services            | Everything `standard_internal` can, plus settings & user management                        |
+| `global_administrator` | Same code-level power as `administrator` | Functionally identical in policy checks — every `admin?` gate is `global_admin? or admin?` |
+
 External roles:
 
 - standard_external
