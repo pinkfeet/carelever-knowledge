@@ -112,6 +112,83 @@ Screen receives simplified versions via data sync:
 
 These are read-only in screen — used to display monitoring context on referrals.
 
+## ERD (Core Tables)
+
+```mermaid
+erDiagram
+    ORGANISATIONS ||--o{ COMPANIES : "has many"
+
+    COMPANIES ||--o{ SITES : "has many"
+    SITES ||--o{ POSITIONS : "has many"
+    COMPANIES ||--o{ PEOPLE : "has many"
+
+    PEOPLE ||--o{ REFERRALS : "has many"
+    PEOPLE }o--|| SITES : "belongs to"
+    PEOPLE }o--|| POSITIONS : "belongs to"
+    PEOPLE }o--o| DIVISIONS : "belongs to"
+    PEOPLE }o--o| SIMILAR_EXPOSURE_GROUPS : "belongs to"
+
+    REFERRALS ||--o{ APPOINTMENTS : "has many"
+    REFERRALS ||--o{ ENROLLED_ITEMS : "has many"
+    REFERRALS ||--o{ EVALUATIONS : "has many"
+    REFERRALS ||--o{ REFERRAL_ACTIVITIES : "has many"
+    REFERRALS ||--o{ CONTACTS : "has many"
+
+    APPOINTMENTS ||--o{ APPOINTMENT_ITEMS : "has many"
+    APPOINTMENTS }o--|| CONSULTANTS : "belongs to"
+    APPOINTMENTS }o--|| LOCATIONS : "belongs to"
+
+    APPOINTMENT_ITEMS }o--|| ENROLLED_ITEMS : "belongs to"
+    APPOINTMENT_ITEMS ||--o{ EVALUATIONS : "polymorphic item"
+
+    ENROLLED_ITEMS }o--|| MONITORING_ITEMS : "belongs to"
+    ENROLLED_ITEMS }o--o| TAGS : "belongs to"
+
+    MONITORING_ITEMS ||--o{ TEST_ITEMS : "has many"
+    MONITORING_ITEMS ||--o{ ENROLLED_ITEMS : "has many"
+    MONITORING_ITEMS }o--o| MONITORING_ITEMS : "parent (self-ref)"
+
+    TEST_ITEMS ||--o{ EVALUATIONS : "has many"
+    TEST_ITEMS ||--o{ OUTCOMES : "has many"
+    TEST_ITEMS ||--o{ TEST_ITEM_PARTICULARS : "has many"
+    TEST_ITEMS ||--o{ TEST_ITEM_FORMS : "has many"
+
+    EVALUATIONS ||--o| RESULTS : "has one"
+    EVALUATIONS }o--|| REFERRALS : "belongs to"
+
+    RESULTS }o--o| OUTCOMES : "belongs to"
+    RESULTS ||--o{ RESULTS : "sub_results (self-ref)"
+
+    OUTCOMES }o--|| TAGS : "belongs to"
+    OUTCOMES }o--|| TEST_ITEMS : "belongs to"
+
+    TAGS }o--|| MONITORING_ITEMS : "belongs to"
+
+    CONSULTANTS }o--|| PEOPLE : "belongs to"
+    CONSULTANTS }o--|| LOCATIONS : "belongs to"
+
+    TEST_ITEM_FORMS ||--o{ TEST_ITEM_REFERRAL_FORMS : "has many"
+    REFERRALS ||--o{ TEST_ITEM_REFERRAL_FORMS : "has many"
+    REFERRALS ||--o{ TEST_ITEM_REFERRAL_RESULTS : "has many"
+
+    ENROLLED_ITEMS ||--o{ LINE_ITEMS : "has many"
+    APPOINTMENT_ITEMS ||--o{ LINE_ITEMS : "has many"
+```
+
+### Key Domain Concepts
+
+| Entity | Role |
+|---|---|
+| `referrals` | Central record — links a person to their monitoring program |
+| `enrolled_items` | A specific monitoring item assigned to a referral (e.g. "Annual Hearing Test") |
+| `monitoring_items` | Catalog of monitoring programs (hierarchical, self-referential) |
+| `test_items` | Individual assessments under a monitoring item |
+| `evaluations` | One test_item performed in one appointment |
+| `results` | Outcome of an evaluation — links to next test date, outcome, sub-results |
+| `outcomes` → `tags` | Determine next monitoring frequency/tag after a result |
+
+Multi-tenancy flows through **Company → Site → Position** (CSP) — most tables carry `company_id`, `site_id`, `position_id` for cascading defaults.
+
 ## Mapping to Assessment/Replit
 
 | Monitoring | Assessment | Notes |
