@@ -50,6 +50,35 @@ This allows a base definition at the tenant level, with company/site/position-sp
 
 The `tenancy_*_id` fields link an override set back to its base detail definition.
 
+### ⚠️ The settings-UI "monitoring item" ≠ the `monitoring_items` table
+
+The internal-UI **settings/options** screens list "monitoring items", but they do
+**not** read the `monitoring_items` table. They read the **`MonitoringItemDetail`
+cluster**, resolved through the `Cascadable` concern's **CSSP** cascade
+(company / site / SEG / position, 8 priority levels, tenancy = all-nil base rows):
+
+- `V3::MonitoringItems::Index` → `MonitoringItemPreference.cascade_with_details(cssp)`
+  — joins `MonitoringItemDetail` (`cascading_sql`) + `monitoring_item_commons`,
+  selecting name / description / `is_default` / `required_referral_roles`.
+- `Options::MonitoringItemDetails::Index` → `MonitoringItemDetail.cascade(cssp, true)`.
+
+The cluster, keyed by `tenancy_monitoring_item_detail_id` (the cascade `base_id`):
+
+| Table | Role |
+|---|---|
+| `monitoring_item_details` | tenancy + CSSP-override rows (name, description) |
+| `monitoring_item_preferences` | `is_default` / `is_hidden` per CSSP |
+| `monitoring_item_commons` | one per tenancy id — `required_referral_roles`, `result_list_additional_columns` |
+| `monitoring_item_sets` (+ `…_set_test_item_details`) | which test item details belong to the item per CSSP |
+| `monitoring_item_detail_test_item_detail_outcome_details` | outcome config per detail row |
+
+The `monitoring_items` table is a **separate** per-referral/CSP enrolment-cascade
+concept (`cascaded_monitoring_items` SQL fn, `MonitoringItem.where_csp`) — that's
+why `MonitoringItem.all` can be empty in a tenant that has fully-configured
+settings. The Monitor→Assessment export
+(`script/migtate-monitor/monitoring_items_export.rb` in `carelever_assessment`)
+targets the `MonitoringItemDetail` cluster, grouped by `tenancy_monitoring_item_detail_id`.
+
 ### Join Tables
 
 | Table | Joins |
