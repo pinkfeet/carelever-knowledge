@@ -1,0 +1,188 @@
+table,explanation
+action_fee_line_items,Line items for action/administrative fees charged on referrals or invoices.
+affiliate_fees,Fee definitions payable to affiliates for referred work.
+allowed_add_on_services,Whitelist of add-on services that can be attached to a given service/booking.
+allowed_next_test_services,Services permitted as the "next test" follow-up after a given service.
+ama_options,AMA (American Medical Association) impairment guide options used in assessments.
+appointment_holds,Temporary holds placed on appointment slots before confirmation.
+appointment_requests,Requests to book appointments awaiting scheduling/confirmation.
+appointment_services,Join of services included in a given appointment.
+appointments,Scheduled appointments for candidates/assessments.
+assessment_matrix_configs,Configuration for assessment outcome matrices.
+audit_logs,General audit trail of write actions across the system.
+authority_to_release_consents,Candidate consents authorising release of medical information.
+automation_conditions,Conditions that gate automation rules.
+automation_rules,Rules that trigger automated workflow actions.
+billing_defaults,Default billing settings applied to companies/referrals.
+bulk_referral_uploads,Tracking records for bulk referral import uploads.
+candidate_availability_windows,Time windows when a candidate is available for appointments.
+candidate_documents,Documents uploaded by or about a candidate.
+candidate_feedbacks,Feedback submitted by candidates.
+chat_conversations,Chat conversation threads.
+chat_messages,Individual messages within chat conversations.
+clinic_calendar_dashboard_snapshots,Cached snapshots powering the clinic calendar dashboard.
+companies,Client companies (tenant level between parent account and site).
+company_affiliate_fees,Affiliate fee overrides per company.
+company_micro_subscriptions,Micro subscription plans assigned to companies.
+company_next_test_overrides,Company-specific overrides for next-test rules.
+company_non_attended_fees,Company-specific non-attendance (DNA) fee settings.
+company_service_prices,Negotiated service prices per company.
+company_subscriptions,Subscription plans assigned to companies.
+comparative_insight_results,Computed results for comparative insight reports.
+comparative_insights,Definitions of comparative insight analyses.
+component_bundle_items,Items within a component bundle.
+component_bundles,Bundles grouping reusable form/report components.
+component_form_section_links,Links between components and form sections.
+component_tags,Tags applied to components.
+component_variants,Variants of a reusable component.
+consent_form_templates,Templates for consent forms.
+contacts,Contact records (people associated with companies/sites).
+credit_notes,Credit notes issued against invoices.
+custom_fields,User-defined custom field definitions.
+dashboard_saved_views,Saved filter/view configurations for dashboards.
+doctor_availability_windows,Time windows when a doctor is available.
+doctor_notifications,Notifications targeted at doctors.
+doctor_review_issues,Issues raised during doctor review of assessments.
+doctor_saved_phrases,Reusable saved text phrases for doctors.
+doctor_service_capabilities,Services a doctor is qualified/capable to perform.
+doctors,Doctor records.
+domain_events,Event-sourcing style domain event log.
+email_brand_settings,Per-tenant email branding configuration.
+exception_signal_activities,Activity log entries for exception signals.
+exception_signals,Immutable deviation flags driving the "Awaiting Action" workflow.
+field_validation_rules,Validation rules applied to form fields.
+form_elements,Generic form element definitions.
+form_field_responses,Submitted responses to form fields.
+form_fields,Field definitions within forms.
+form_options,Selectable options for form fields.
+form_response_templates,Templates for pre-filled form responses.
+form_section_definitions,Definitions of reusable form sections.
+form_section_elements,Elements belonging to form sections.
+form_sections,Form section instances.
+form_sessions,Sessions tracking form completion progress.
+form_template_actions,Actions triggered by form templates.
+form_template_service_links,Links between form templates and services.
+form_templates,Reusable form templates.
+functional_assessment_configs,Configuration for functional capacity assessments.
+further_info_assessment_attachments,Attachments for further-information assessment requests.
+further_info_conditions,Conditions governing further-information requirements.
+further_info_requirements,Definitions of further information required on referrals.
+in_app_notifications,In-app notifications shown to users.
+insights_snapshots,Cached snapshots for insights reporting.
+invoicing_contacts,Contacts designated for invoicing purposes.
+issue_categories,Categories grouping issue definitions.
+issue_definitions,Rules that generate exception signals.
+medical_consents,Medical consent records from candidates.
+medical_matrix_rules,Rules in a medical outcome matrix.
+medical_matrix_template_assignments,Assignments of medical matrix templates to entities.
+medical_matrix_template_rules,Rules within medical matrix templates.
+medical_matrix_templates,Templates for medical outcome matrices.
+medical_review_guidelines,Guidelines used during medical review.
+message_templates,Reusable templates for outbound messages.
+netsuite_locations,NetSuite location mappings for accounting integration.
+next_test_rules,Rules determining the next recommended test.
+non_attended_fees,Non-attendance (DNA) fee definitions.
+notification_logs,Log of sent notifications.
+notification_preferences,User notification preference settings.
+notification_trigger_companies,Companies scoped to notification triggers.
+notification_trigger_service_items,Service items scoped to notification triggers.
+notification_triggers,Definitions of conditions that fire notifications.
+nudges,Nudge/reminder records prompting user action.
+onsite_project_billing_items,Billing line items for onsite projects.
+onsite_project_candidate_imports,Candidate import records for onsite projects.
+onsite_project_drafts,Draft onsite project configurations.
+onsite_project_room_service_items,Service items assigned to onsite project rooms.
+onsite_project_rooms,Rooms used in onsite projects.
+onsite_project_service_items,Service items offered in onsite projects.
+onsite_project_sites,Sites participating in onsite projects.
+onsite_project_slots,Bookable time slots for onsite projects.
+onsite_project_staff_assignments,Staff assigned to onsite projects.
+onsite_project_templates,Templates for creating onsite projects.
+onsite_project_viewers,Users with view access to onsite projects.
+onsite_project_waitlist_entries,Waitlist entries for onsite project slots.
+onsite_projects,Onsite assessment project records.
+outcome_approval_rules,Rules governing approval of assessment outcomes.
+outcome_approvals,Approval records for assessment outcomes.
+outcome_events,Events in the outcome lifecycle.
+outcome_report_templates,Templates for outcome reports.
+parent_accounts,Top-level tenant accounts (parent of companies).
+pdf_import_analyses,Analysis records for imported PDF documents.
+people,Person records (candidates/individuals).
+permissions,Granular named permissions.
+pinned_referrals,Referrals pinned by users for quick access.
+po_blacklists,Blacklisted purchase order numbers.
+popup_announcement_dismissals,Records of users dismissing popup announcements.
+popup_announcement_views,Records of users viewing popup announcements.
+popup_announcements,Popup announcement definitions.
+position_documents,Documents attached to job positions.
+positions,Job position records.
+practitioner_service_qualifications,Qualifications linking practitioners to services.
+practitioners,Practitioner records.
+pre_assessment_responses,Candidate responses captured before assessment.
+preparation_item_assignments,Assignments of preparation items to referrals/services.
+preparation_items,Preparation instruction items for candidates.
+previous_result_requirements,Requirements for prior test results before an assessment.
+pricing_rule_conditions,Conditions for pricing rules.
+pricing_rule_discounts,Discounts applied by pricing rules.
+pricing_rules,Rules governing dynamic pricing.
+purchase_order_assignment_rule_sites,Sites scoped to PO assignment rules.
+purchase_order_assignment_rules,Rules assigning purchase orders automatically.
+purchase_order_configurations,Purchase order configuration settings.
+purchase_order_documents,Uploaded purchase order documents.
+referral_activities,Activity log for referrals.
+referral_discounts,Discounts applied to referrals.
+referral_drafts,Draft referrals not yet submitted.
+referral_further_info_items,Further-information items requested on a referral.
+referral_notes,Notes attached to referrals.
+referral_relationships,Relationships linking referrals to one another.
+referral_templates,Templates for creating referrals.
+referrals,Core referral records (central assessment workflow entity).
+refunds,Refund records.
+report_exports,Tracking records for report export jobs.
+reports,Generated report records.
+reschedule_requests,Requests to reschedule appointments.
+role_permissions,Join of permissions granted to roles.
+roles,Role definitions (admin/assessor/doctor/etc.).
+saas_subscriptions,SaaS-level subscription records.
+scheduled_reports,Definitions of reports scheduled to run automatically.
+secondary_assessment_reasons,Reasons for secondary assessments.
+service_bundle_items,Items within a service bundle.
+service_defaults,Default settings for services.
+service_item_audit_logs,Audit trail for service item changes.
+service_item_outcome_options,Outcome options available for service items.
+service_item_visibilities,Visibility settings for service items.
+service_items,Individual service item records.
+service_outcome_options,Outcome options available for services.
+service_prices,Base price definitions for services.
+service_recommendations,Recommended services for a referral/candidate.
+service_variations,Variations/configurations of a service.
+services,Core service catalogue.
+sessions,Authentication/login session records.
+shift_recurrence_skips,Skipped occurrences in shift recurrence patterns.
+shift_recurrences,Recurrence patterns for shifts.
+shift_task_categories,Categories for shift tasks.
+shift_task_types,Types of shift tasks.
+shifts,Work shift records.
+site_contact_defaults,Default contacts assigned to sites.
+site_service_prices,Service prices negotiated per site.
+sites,Sites (lowest level of tenant hierarchy under company).
+suburbs,Suburb/locality reference data.
+supplier_assignments,Assignments of suppliers to work.
+supplier_availabilities,Supplier availability windows.
+supplier_blocked_dates,Dates suppliers are unavailable.
+supplier_capability_variants,Service variant capabilities of suppliers.
+supplier_referral_templates,Referral templates specific to suppliers.
+supplier_service_capabilities,Services a supplier is capable of providing.
+suppliers,Supplier/provider records.
+system_settings,Global system configuration settings.
+tags,Generic tag records.
+telehealth_consultations,Telehealth consultation records.
+telehealth_reasons,Reasons for telehealth consultations.
+time_segments,Time segment definitions (scheduling blocks).
+user_permissions,Direct permission grants to users.
+user_roles,Join of roles assigned to users.
+user_scope_assignments,Tenant scope assignments restricting user access.
+users,User accounts.
+voice_call_logs,Log of voice calls made/received.
+voice_call_trigger_conditions,Conditions for voice call triggers.
+voice_call_triggers,Definitions of conditions that initiate voice calls.

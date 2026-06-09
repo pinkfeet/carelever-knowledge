@@ -1,0 +1,188 @@
+table,explanation,in_db_reference_export
+action_fee_line_items,Line items for action/administrative fees charged on referrals or invoices.,no
+affiliate_fees,Fee definitions payable to affiliates for referred work.,no
+allowed_add_on_services,Whitelist of add-on services that can be attached to a given service/booking.,yes
+allowed_next_test_services,Services permitted as the "next test" follow-up after a given service.,yes
+ama_options,AMA (American Medical Association) impairment guide options used in assessments.,yes
+appointment_holds,Temporary holds placed on appointment slots before confirmation.,no
+appointment_requests,Requests to book appointments awaiting scheduling/confirmation.,no
+appointment_services,Join of services included in a given appointment.,no
+appointments,Scheduled appointments for candidates/assessments.,no
+assessment_matrix_configs,Configuration for assessment outcome matrices.,no
+audit_logs,General audit trail of write actions across the system.,no
+authority_to_release_consents,Candidate consents authorising release of medical information.,no
+automation_conditions,Conditions that gate automation rules.,no
+automation_rules,Rules that trigger automated workflow actions.,no
+billing_defaults,Default billing settings applied to companies/referrals.,no
+bulk_referral_uploads,Tracking records for bulk referral import uploads.,no
+candidate_availability_windows,Time windows when a candidate is available for appointments.,no
+candidate_documents,Documents uploaded by or about a candidate.,no
+candidate_feedbacks,Feedback submitted by candidates.,no
+chat_conversations,Chat conversation threads.,no
+chat_messages,Individual messages within chat conversations.,no
+clinic_calendar_dashboard_snapshots,Cached snapshots powering the clinic calendar dashboard.,no
+companies,Client companies (tenant level between parent account and site).,no
+company_affiliate_fees,Affiliate fee overrides per company.,no
+company_micro_subscriptions,Micro subscription plans assigned to companies.,no
+company_next_test_overrides,Company-specific overrides for next-test rules.,no
+company_non_attended_fees,Company-specific non-attendance (DNA) fee settings.,no
+company_service_prices,Negotiated service prices per company.,no
+company_subscriptions,Subscription plans assigned to companies.,no
+comparative_insight_results,Computed results for comparative insight reports.,no
+comparative_insights,Definitions of comparative insight analyses.,no
+component_bundle_items,Items within a component bundle.,yes
+component_bundles,Bundles grouping reusable form/report components.,yes
+component_form_section_links,Links between components and form sections.,yes
+component_tags,Tags applied to components.,yes
+component_variants,Variants of a reusable component.,yes
+consent_form_templates,Templates for consent forms.,no
+contacts,Contact records (people associated with companies/sites).,no
+credit_notes,Credit notes issued against invoices.,no
+custom_fields,User-defined custom field definitions.,no
+dashboard_saved_views,Saved filter/view configurations for dashboards.,no
+doctor_availability_windows,Time windows when a doctor is available.,no
+doctor_notifications,Notifications targeted at doctors.,no
+doctor_review_issues,Issues raised during doctor review of assessments.,no
+doctor_saved_phrases,Reusable saved text phrases for doctors.,no
+doctor_service_capabilities,Services a doctor is qualified/capable to perform.,no
+doctors,Doctor records.,no
+domain_events,Event-sourcing style domain event log.,no
+email_brand_settings,Per-tenant email branding configuration.,no
+exception_signal_activities,Activity log entries for exception signals.,no
+exception_signals,Immutable deviation flags driving the "Awaiting Action" workflow.,no
+field_validation_rules,Validation rules applied to form fields.,yes
+form_elements,Generic form element definitions.,yes
+form_field_responses,Submitted responses to form fields.,no
+form_fields,Field definitions within forms.,yes
+form_options,Selectable options for form fields.,yes
+form_response_templates,Templates for pre-filled form responses.,no
+form_section_definitions,Definitions of reusable form sections.,yes
+form_section_elements,Elements belonging to form sections.,yes
+form_sections,Form section instances.,no
+form_sessions,Sessions tracking form completion progress.,no
+form_template_actions,Actions triggered by form templates.,no
+form_template_service_links,Links between form templates and services.,no
+form_templates,Reusable form templates (legacy form system).,no
+functional_assessment_configs,Configuration for functional capacity assessments.,no
+further_info_assessment_attachments,Attachments for further-information assessment requests.,no
+further_info_conditions,Conditions governing further-information requirements.,no
+further_info_requirements,Definitions of further information required on referrals.,no
+in_app_notifications,In-app notifications shown to users.,no
+insights_snapshots,Cached snapshots for insights reporting.,no
+invoicing_contacts,Contacts designated for invoicing purposes.,no
+issue_categories,Categories grouping issue definitions.,yes
+issue_definitions,Rules that generate exception signals.,yes
+medical_consents,Medical consent records from candidates.,no
+medical_matrix_rules,Rules in a medical outcome matrix (global rows only).,yes
+medical_matrix_template_assignments,Assignments of medical matrix templates to entities (global rows only).,yes
+medical_matrix_template_rules,Rules within medical matrix templates.,yes
+medical_matrix_templates,Templates for medical outcome matrices.,yes
+medical_review_guidelines,Guidelines used during medical review.,no
+message_templates,Reusable templates for outbound messages.,yes
+netsuite_locations,NetSuite location mappings for accounting integration.,no
+next_test_rules,Rules determining the next recommended test.,no
+non_attended_fees,Non-attendance (DNA) fee definitions.,no
+notification_logs,Log of sent notifications.,no
+notification_preferences,User notification preference settings.,no
+notification_trigger_companies,Companies scoped to notification triggers.,no
+notification_trigger_service_items,Service items scoped to notification triggers (global triggers only).,yes
+notification_triggers,Definitions of conditions that fire notifications (global triggers only).,yes
+nudges,Nudge/reminder records prompting user action.,no
+onsite_project_billing_items,Billing line items for onsite projects.,no
+onsite_project_candidate_imports,Candidate import records for onsite projects.,no
+onsite_project_drafts,Draft onsite project configurations.,no
+onsite_project_room_service_items,Service items assigned to onsite project rooms.,no
+onsite_project_rooms,Rooms used in onsite projects.,no
+onsite_project_service_items,Service items offered in onsite projects.,no
+onsite_project_sites,Sites participating in onsite projects.,no
+onsite_project_slots,Bookable time slots for onsite projects.,no
+onsite_project_staff_assignments,Staff assigned to onsite projects.,no
+onsite_project_templates,Templates for creating onsite projects.,no
+onsite_project_viewers,Users with view access to onsite projects.,no
+onsite_project_waitlist_entries,Waitlist entries for onsite project slots.,no
+onsite_projects,Onsite assessment project records.,no
+outcome_approval_rules,Rules governing approval of assessment outcomes.,no
+outcome_approvals,Approval records for assessment outcomes.,no
+outcome_events,Events in the outcome lifecycle.,no
+outcome_report_templates,Templates for outcome reports.,no
+parent_accounts,Top-level tenant accounts (parent of companies).,no
+pdf_import_analyses,Analysis records for imported PDF documents.,no
+people,Person records (candidates/individuals).,no
+permissions,Granular named permissions.,no
+pinned_referrals,Referrals pinned by users for quick access.,no
+po_blacklists,Blacklisted purchase order numbers.,no
+popup_announcement_dismissals,Records of users dismissing popup announcements.,no
+popup_announcement_views,Records of users viewing popup announcements.,no
+popup_announcements,Popup announcement definitions.,no
+position_documents,Documents attached to job positions.,no
+positions,Job position records.,no
+practitioner_service_qualifications,Qualifications linking practitioners to services.,no
+practitioners,Practitioner records.,no
+pre_assessment_responses,Candidate responses captured before assessment.,no
+preparation_item_assignments,Assignments of preparation items to referrals/services.,no
+preparation_items,Preparation instruction items for candidates.,no
+previous_result_requirements,Requirements for prior test results before an assessment.,yes
+pricing_rule_conditions,Conditions for pricing rules.,no
+pricing_rule_discounts,Discounts applied by pricing rules.,no
+pricing_rules,Rules governing dynamic pricing.,no
+purchase_order_assignment_rule_sites,Sites scoped to PO assignment rules.,no
+purchase_order_assignment_rules,Rules assigning purchase orders automatically.,no
+purchase_order_configurations,Purchase order configuration settings.,no
+purchase_order_documents,Uploaded purchase order documents.,no
+referral_activities,Activity log for referrals.,no
+referral_discounts,Discounts applied to referrals.,no
+referral_drafts,Draft referrals not yet submitted.,no
+referral_further_info_items,Further-information items requested on a referral.,no
+referral_notes,Notes attached to referrals.,no
+referral_relationships,Relationships linking referrals to one another.,no
+referral_templates,Templates for creating referrals.,no
+referrals,Core referral records (central assessment workflow entity).,no
+refunds,Refund records.,no
+report_exports,Tracking records for report export jobs.,no
+reports,Generated report records.,no
+reschedule_requests,Requests to reschedule appointments.,no
+role_permissions,Join of permissions granted to roles.,no
+roles,Role definitions (admin/assessor/doctor/etc.).,no
+saas_subscriptions,SaaS-level subscription records.,no
+scheduled_reports,Definitions of reports scheduled to run automatically.,no
+secondary_assessment_reasons,Reasons for secondary assessments.,yes
+service_bundle_items,Items within a service bundle.,yes
+service_defaults,Default settings for services.,no
+service_item_audit_logs,Audit trail for service item changes.,no
+service_item_outcome_options,Outcome options available for service items.,yes
+service_item_visibilities,Visibility settings for service items.,no
+service_items,Individual service item records.,yes
+service_outcome_options,Outcome options available for services.,yes
+service_prices,Base price definitions for services.,yes
+service_recommendations,Recommended services for a referral/candidate.,no
+service_variations,Variations/configurations of a service.,yes
+services,Core service catalogue.,no
+sessions,Authentication/login session records.,no
+shift_recurrence_skips,Skipped occurrences in shift recurrence patterns.,no
+shift_recurrences,Recurrence patterns for shifts.,no
+shift_task_categories,Categories for shift tasks.,no
+shift_task_types,Types of shift tasks.,no
+shifts,Work shift records.,no
+site_contact_defaults,Default contacts assigned to sites.,no
+site_service_prices,Service prices negotiated per site.,no
+sites,Sites (lowest level of tenant hierarchy under company).,no
+suburbs,Suburb/locality reference data.,no
+supplier_assignments,Assignments of suppliers to work.,no
+supplier_availabilities,Supplier availability windows.,no
+supplier_blocked_dates,Dates suppliers are unavailable.,no
+supplier_capability_variants,Service variant capabilities of suppliers.,no
+supplier_referral_templates,Referral templates specific to suppliers.,no
+supplier_service_capabilities,Services a supplier is capable of providing.,no
+suppliers,Supplier/provider records.,no
+system_settings,Global system configuration settings.,no
+tags,Generic tag records.,yes
+telehealth_consultations,Telehealth consultation records.,no
+telehealth_reasons,Reasons for telehealth consultations.,no
+time_segments,Time segment definitions (scheduling blocks).,no
+user_permissions,Direct permission grants to users.,no
+user_roles,Join of roles assigned to users.,no
+user_scope_assignments,Tenant scope assignments restricting user access.,no
+users,User accounts.,no
+voice_call_logs,Log of voice calls made/received.,no
+voice_call_trigger_conditions,Conditions for voice call triggers.,no
+voice_call_triggers,Definitions of conditions that initiate voice calls.,no
