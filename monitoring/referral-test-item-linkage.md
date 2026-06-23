@@ -87,3 +87,174 @@ that the settings-UI "monitoring item" reads the `MonitoringItemDetail` cluster,
   `duration_in_minutes`, cascaded name/description.
 - **appointment_items**: `appointment_id`, `referral_id`, `enrolled_item_id`,
   `item_id` + `item_type`, denormalized test_item_detail name/description.
+
+## Results (migration target)
+
+⚠️ **There are TWO result models** — same legacy-vs-modern split as `test_item`:
+
+| | Legacy | Modern (canonical) |
+|---|---|---|
+| Model | `Result` | `TestItemReferralResult` (TIRR) |
+| Table | `results` | `test_item_referral_results` |
+| Anchored on | `evaluation_id` (per appointment) | `referral_id` + `tenancy_monitoring_item_detail_id` (per program, per cycle) |
+| Test ref | via `evaluation.test_item` | `tenancy_test_item_detail_id` |
+| Outcome | `outcome_id` → `Outcome` | `cascaded_outcome_detail_name` + `OutcomeDetail` cascade |
+
+**Migrate `TestItemReferralResult` as the primary historical results table.** `Result`
+is the older per-evaluation row; TIRR is the per-cycle history the client portal and
+next-test logic read from (see [referral-enrolled-item.md](referral-enrolled-item.md)
+§"How Results are Queried").
+
+### TestItemReferralResult — key columns
+
+`app/models/test_item_referral_result.rb`. Table `test_item_referral_results`:
+
+- **Identity**: `referral_id`, `tenancy_monitoring_item_detail_id` (which program),
+  `tenancy_test_item_detail_id` (which test).
+- **Result payload**: `data` (jsonb — test-specific values), `test_item_specific_data`
+  (jsonb), `config` (json — audio/spirometry), `screen_outcome`, `additional_note`,
+  `recommendations` (string[]).
+- **Outcome**: `cascaded_outcome_detail_name` (denormalized; resolve via `OutcomeDetail`
+  cascade, `tenancy_outcome_detail_id`).
+- **Lifecycle**: `result_date`, `completed_at`, `is_final_result` (true = end of cycle),
+  `is_using_standard_next_test`, `from_screen`.
+- **Links**: `result_id` (→ legacy `Result`, optional), `result_evaluation_id`
+  (→ `ResultEvaluation`, optional), `attachment_ids` (uuid[]).
+- `*_old`/`old_config` columns are legacy — skip.
+
+### Multi-cycle (year-over-year)
+
+A referral is long-lived, so the **same program repeats yearly** on the same
+`(referral_id, tenancy_monitoring_item_detail_id, tenancy_test_item_detail_id)`.
+
+- **Each cycle = a NEW TIRR row** — rows accumulate, never updated in place
+  (`app/commands/test_item_referral_results/create.rb:17` always builds a fresh UUID row).
+- **"Current" is not stored** — it's `COALESCE(result_date, created_at) DESC`, newest first.
+  `is_last_record` is computed at query time (`index.rb:24-30`), and
+  `UpdateRelatedEnrolledItem` reads the latest completed row via
+  `completed_recent_result_in_monitoring_item` (`test_item_referral_results_helper.rb:6`,
+  `.order(result_date: :desc).first`).
+- **`is_final_result` ≠ end of a cycle** — it marks end of the whole enrolment (worker
+  exits the program): `enrolled_item` → `completed`, due_date/next-test cleared
+  (`reset_status.rb:57-58`, `update_related_enrolled_item.rb:28-34`).
+- **One year's visit is grouped by `RequestedAssessment` → `RequestedTestItemAssessment`**,
+  which links to the cycle's TIRR rows via `test_item_referral_result_id`
+  (`requested_test_item_assessment.rb:26`).
+
+**`result_date` lifecycle** (the field that orders cycles): nullable; set only when the
+test is resulted — `appointment.scheduled_at` on appointment link
+(`appointment_item_result.rb:45`), `result_appointment_date` on screen import
+(`create_form.rb:93`), or a manual date (`update.rb:34`, `save_data.rb:15`). Holds the
+**date the test was performed**, and is **cleared to NULL** if the appointment is unlinked
+(`update_linking.rb:16`). Distinct from `completed_at` (evaluated/finished) and
+`created_at` (row creation) — hence the `COALESCE` ordering.
+
+**Migration:** split accumulating TIRR rows into separate Assessment referrals per cycle —
+group by `RequestedAssessment` (or bucket by `result_date`). Newest cycle → the active
+referral; older cycles → historical result records. Rows with `result_date = NULL` are
+requested-but-unresulted and should not be treated as completed history.
+
+## Building Assessment referrals from one monitoring item
+
+Goal: for one monitoring item (`tenancy_monitoring_item_detail_id = X`), turn its
+appointments + results into Assessment referrals.
+
+**Granularity: one referral per cycle, NOT per enrolment.** Two cycles of the same item
+→ two referrals. The cycle boundary is `RequestedAssessment` (one per request/visit for
+that program); each `RequestedAssessment` → its `RequestedTestItemAssessment`s →
+`test_item_referral_result_id` enumerates the TIRR rows + appointments of that cycle
+(`requested_test_item_assessment.rb:26`). Fallback when a cycle has no
+`RequestedAssessment`: bucket by `result_date` (+ the linked appointments).
+
+### Scoping conditions
+
+**(A) Results for the program** — completeness is `is_completed?`
+(`test_item_referral_result.rb:132-134`), *not* `result_date`:
+
+```sql
+test_item_referral_results.tenancy_monitoring_item_detail_id = X
+  AND (result_evaluation_id IS NOT NULL OR cascaded_outcome_detail_name IS NOT NULL)
+```
+
+**(B) Appointments for the program** — `evaluations` carries
+`tenancy_monitoring_item_detail_id` directly (`schema.rb:773`); join appointment →
+appointment_items (`item_type = 'Evaluation'`) → evaluations, keep only ones that
+happened:
+
+```sql
+appointments.status IN (0, 6)   -- attended, completed (enum: appointment.rb:42)
+  AND evaluations.tenancy_monitoring_item_detail_id = X
+```
+
+`appointments.status` enum: `attended(0) cancelled(1) confirmed(2) no_show(3)
+rescheduled(4) unconfirmed(5) completed(6) late_cancelled(7)`.
+
+**(C) Split A+B by cycle** (group by `RequestedAssessment`, else `result_date` bucket) →
+emit one referral each.
+
+### Cautions
+
+- **Do not filter by `enrolled_items.status`** for a *history* migration. Status is the
+  *current* enrolment state (`on_hold ongoing stopped completed requested not_commenced
+  under_way incomplete_result_modal`, `enrolled_item.rb:77`); filtering to active statuses
+  drops `completed`/`stopped` programs whose past cycles you still want. Drive the
+  migration off TIRR rows + appointments, not enrolment status.
+- **No soft-delete columns** on `referrals`, `appointments`, `appointment_items`,
+  `evaluations`, `enrolled_items`, or `test_item_referral_results` — no
+  `discarded_at`/`deleted_at` filtering needed. Only `appointments.status` encodes
+  cancellation.
+
+### Associations to carry across
+
+| Hop | Association | Source |
+|---|---|---|
+| TIRR → Referral | `belongs_to :referral` | `test_item_referral_result.rb:71` |
+| TIRR → TestItemDetail | `belongs_to :tenancy_test_item_detail, class_name: 'TestItemDetail'` | `:63-65` |
+| TIRR → MonitoringItemDetail | `belongs_to :tenancy_monitoring_item_detail, class_name: 'MonitoringItemDetail'` | `:67-69` |
+| TIRR → NextTest | `has_many :next_tests, dependent: :destroy` | `:46` |
+| TIRR → Attachment | `has_many :attachments, as: :attached_to` | `:44` |
+| TIRR → criteria | `has_many :criterions, through: :test_item_referral_result_criterions` | `:57-58` |
+| TIRR → legacy Result | `belongs_to :result` | `:61` |
+| TIRR → ResultEvaluation | `belongs_to :result_evaluation` | `:60` |
+
+### Satellite tables to migrate alongside TIRR
+
+- **next_tests** (`app/models/next_test.rb`): the scheduled follow-up tests derived from
+  this result. Columns: `test_item_referral_result_id`, `tenancy_test_item_detail_id`,
+  `date`, `classification` (additional / previous_result / evaluation), `offset_unit`,
+  `offset_value`. **This is the source of `enrolled_item.due_date`.**
+- **attachments** (`app/models/attachment.rb`): polymorphic via `attached_to_id/_type`;
+  points to an `Upload` (`upload_id`) for the actual file (CarrierWave/S3). Classified by
+  `ReferralAttachmentClassification`. TIRR also denormalizes `attachment_ids` (uuid[]).
+- **test_item_referral_result_criterions** + **criterions**: the evaluation criteria that
+  produced the outcome (carries `outcome`, `outcome_detail_id`, `recommendations[]`).
+- **outcome_details** (`OutcomeDetail`): the cascaded outcome catalog (CSSP), self-ref via
+  `tenancy_outcome_detail_id`. Resolve `cascaded_outcome_detail_name` against this.
+
+### Next-test write-back flow (don't re-implement — migrate end state)
+
+On TIRR `after_update_commit`, `TestItemReferralResults::UpdateRelatedEnrolledItem`
+(`app/commands/test_item_referral_results/update_related_enrolled_item.rb`) pushes the
+latest completed result back onto the enrolled item:
+
+- earliest `upcoming_next_tests.date` → `enrolled_item.due_date` (`:37`)
+- joined test descriptions → `next_cascaded_test_item_description` (`:38`)
+- earliest next-test offset → `cascaded_frequency_type` / `cascaded_frequency_value` (`:39-40`)
+- outcome name → `cascaded_outcome_detail_name` (`:20`); health risk → `cascaded_has_health_risk` (`:24`)
+- if `is_final_result` → clears due_date / next test / frequency (`:28-34`)
+
+For Assessment, the relevant fields map onto the referral (per
+[referral-enrolled-item.md](referral-enrolled-item.md) §"Migration Implication"):
+`due_date` → `referrals.next_test_date`, `tenancy_monitoring_item_detail_id` →
+`referrals.next_test_service_item_id`, suggested test → `referrals.next_test_service_variation_id`.
+Migrate the **computed end state**, not the trigger chain.
+
+### Legacy Result — pre-TIRR history (Assessment migration)
+
+**Cutover decision (dev tenant):** TIRR-only migration. Pre-TIRR `Result` rows without
+TIRR are not exported (~14 pure pre-TIRR referrals on dev — invisible in Monitor UI).
+See
+[`TESTING-REFERRALS.md`](../../carelever_assessment/script/migrate-monitor/TESTING-REFERRALS.md)
+and
+[`legacy-results-migration.md`](../../carelever_assessment/script/migrate-monitor/specs/legacy-results-migration.md)
+for bucket counts and inspector paste block.

@@ -303,6 +303,8 @@ Monitor's single long-lived referral maps to **multiple short-lived referrals** 
 
 ## Appendix C: Migration Execution
 
+> **Referral bulk runbook:** Per-referral JSON export/import (~50k files), sharding, resume, and cutover — see [monitor-referrals-bulk-migration.md](../migration/monitor-referrals-bulk-migration.md). The DB-to-DB approach below suits **catalog/settings** migration; referrals use the script pipeline in `carelever_assessment/script/migrate-monitor/`.
+
 ### Approach
 
 Both Monitor and Assessment run on ECS with separate RDS databases accessible only within the VPC. No S3 needed — connect directly DB-to-DB from inside the VPC.
