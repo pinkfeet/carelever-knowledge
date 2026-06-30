@@ -1,0 +1,2 @@
+code,name,description,booking_required,booking_type,appointment_duration,pricing_type,service_type,employee_eligibility,self_bookable,self_bookable_category,has_variants,requires_doctor_review,has_outcome
+KIN-PEM,KINNECT Pre-Employment Medical,Standard pre-employment medical,true,requires_booking,30,fixed,standard,both,true,medical,false,true,true

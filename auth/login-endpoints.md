@@ -6,9 +6,10 @@
 |---|---|---|---|---|
 | `POST /v1/authentication/internal/authenticate` | `internal` | `username@org-slug` | Staff, admins, operations | Yes — email, SMS, or authenticator app (per `otp_mode`) |
 | `POST /v1/authentication/external/authenticate` | `external` | `email` | Clients, employers, doctors | Yes — email, SMS, or authenticator app |
-| `POST /v1/authentication/affiliate/authenticate` | `affiliate` | `username@org-slug` | Affiliate clinic users | No |
+| `POST /v2/affiliate/authenticate` | `affiliate` | `username@org-slug` | Affiliate clinic users | **Yes** — email OTP (default) or authenticator app (Assessment UI uses this) |
+| `POST /v1/authentication/affiliate/authenticate` | `affiliate` | `username@org-slug` | Affiliate clinic users | Legacy — returns full JWT without MFA gate; **not used by Assessment affiliate app** |
 
-### OTP Endpoints (for internal and external)
+### OTP Endpoints (internal, external, and affiliate)
 
 | Endpoint | Purpose |
 |---|---|
@@ -16,6 +17,8 @@
 | `POST /v1/authentication/internal/authenticate_otp` | Verify OTP for internal user |
 | `POST /v1/authentication/external/request_otp` | Request OTP for external user |
 | `POST /v1/authentication/external/authenticate_otp` | Verify OTP for external user |
+| `POST /v1/authentication/affiliate/request_otp` | Resend OTP for affiliate user (during MFA step) |
+| `POST /v1/authentication/affiliate/authenticate_otp` | Verify OTP for affiliate user |
 
 ## Login Flow
 
@@ -28,10 +31,14 @@
 5. If `otp_mode` is `authenticator_app` → user enters TOTP code from app → `POST .../authenticate_otp`
 6. If `otp_mode` is `no_otp` → MFA skipped, JWT is immediately usable
 
-### Affiliate (no MFA)
+### Affiliate (with MFA — Assessment UI)
 
-1. User submits `username@org-slug` + password → `POST .../affiliate/authenticate`
-2. Auth service validates, returns JWT — no OTP step
+1. User submits `username@org-slug` + password → `POST /v2/affiliate/authenticate`
+2. Auth validates credentials. If a valid remember-device cookie is present → full JWT immediately. Otherwise → `login_attempt: "otp_required"` + short-lived OTP-scoped JWT; Auth emails a 6-digit code (`Affiliate::OtpLoginMailer`).
+3. User enters OTP → `POST /v1/authentication/affiliate/authenticate_otp` → full affiliate JWT.
+4. Optional: user can enroll an authenticator app via `/v1/authentication/affiliate/users/otp_modes/*` (profile MFA setup).
+
+See `carelever_authentication/docs/features/affiliate-mfa.md` for full behaviour (CT-4112 pentest remediation).
 
 ## User Creation by Classification
 
@@ -58,6 +65,7 @@ Doctors do not have a separate login endpoint. They are `external` classificatio
 |---|---|---|
 | `carelever_internal_ui` | `/login` | internal authenticate |
 | `carelever_client_ui` | `/login` | external authenticate |
-| `carelever_affiliate_ui` | `/affiliate/login` | affiliate authenticate |
+| `carelever_assessment_ui` (affiliate app) | `/login` | `POST /v2/affiliate/authenticate` + affiliate OTP endpoints |
+| `carelever_affiliate_ui` (legacy) | `/affiliate/login` | v1 affiliate authenticate (pre-MFA) |
 | `carelever_hub_ui` | `/login` | internal authenticate |
 | `carelever-replit-reimagined` | Multiple portals (admin, client, candidate, affiliate) | All — monolith handles auth internally |

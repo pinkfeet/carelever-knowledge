@@ -1,0 +1,3 @@
+code,name,description,booking_required,booking_type,appointment_duration,requires_doctor_review,self_bookable,self_bookable_category
+KIN-AUDIO,Audiometry,Hearing test,true,requires_booking,15,false,true,audiometry
+KIN-SPIRO,Spirometry,Lung function test,true,requires_booking,15,false,true,spirometry

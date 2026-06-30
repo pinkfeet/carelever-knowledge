@@ -1,0 +1,3 @@
+component_code,name,code,sort_order,active,description
+KIN-AUDIO,Standard,,1,true,Standard audiometry
+KIN-AUDIO,Pre/Post Shift,,2,true,Audiometry before and after shift
