@@ -10,28 +10,30 @@
 All findings verified against code (file:line refs are to `carelever_assessment` unless prefixed `monitor:` = `carelever_monitoring`).
 
 > **Status update 2026-07-03:** since this review, `CT-5717` (#591) stamped booking timestamps + `appointment_fulfilment_mode` + `SupplierAssignment` on migrated services (findings #1/#13), and `0ef1625d` switched person resolution to `monitor_person_id` (finding #3). **Residual HIGH gap remains** for booked-but-not-yet-resulted appointments — see §1a. Line refs below are as of the original review; the import has shifted.
+>
+> **Status update 2026-07-03 (later): gap-remediation series (Tasks 1–10, 12) landed.** Every §2/§3 finding below is now marked with its resolution. Most HIGH/MEDIUM data-coverage findings are **FIXED**; a small number are accepted **documented skips** (delay/audit metadata, appointment sub-spec fields, invoicing entity secondary fields, document author strings) or an explicit **open product decision** (`people.seg_id`/`division_id` — no landing spot designed yet). Findings outside the referral-field/related-data/billing specs (ops tooling, delta-export coverage, re-import idempotency, Azure document byte-copy, unit→component catalog mapping) were **not** in scope for this series and remain open — see the per-item notes below.
 
 ---
 
 ## TL;DR — ranked findings
 
-| # | Finding | Severity |
-|---|---------|----------|
-| 1 | Services never get `appointment_booked_at` / `appointment_booked_for` / `appointment_intent_recorded_at` — candidate double-booking, wrong stages, blank key dates, dead reminders, inflated KPIs. *Fixed by CT-5717 for resulted (AIR-linked) services; **§1a residual**: booked-but-unresulted appointments still dropped (Path A `requested_test_item_appointments` never exported)* | **HIGH** |
-| 2 | TIRR doctor commentary (`additional_note`, `recommendations`) dropped entirely — spec promised `additional_note` | **HIGH** |
-| 3 | Person matching by email alone merges different humans; referral candidate_* then stamped from the wrong Person | **HIGH** |
-| 4 | `next_test_service_item_id`/`next_test_service_variation_id` never set → monitoring list shows "Standard Assessment"; `is_final_result` ignored → exited workers re-enter monitoring | **HIGH** |
-| 5 | Unit → component services unimplemented; units mapping 0/58 filled | **HIGH** |
-| 6 | Azure `referral_documents` land with unfetchable `file_path` (no byte-copy/convert step exists) | **HIGH** |
-| 7 | Person with in-flight newest cycle vanishes from client monitoring list (`next_test_date` only set on completed active cycle) | **MEDIUM** |
-| 8 | Cancelled test requests resurrected as active in-progress referrals; cancelled/no-show appointments can stamp `appointment_attended_at`; `unconfirmed` → `completed` status mapping | **MEDIUM** |
-| 9 | Delta export (`UPDATED_SINCE`) blind to Person, TIRR-level attachment, NextTest, AppointmentItemResult, InvoicingEntity changes | **MEDIUM** |
-| 10 | Re-import gotchas: duplicate Contacts via phone normalization mismatch; `\|\|=` fields frozen; doctor unassignment not cleared | **MEDIUM** |
-| 11 | RESET crashes on referrals with post-import `BillingAttempt`/`LineItem`/chat rows (purge script handles them; RESET doesn't) | **MEDIUM** |
-| 12 | `cached_billing_total_cents` nil → client "Total spend" shows $0 for migrated history | **MEDIUM** |
-| 13 | `appointment_fulfilment_mode` left `booked_only` for walk-in items; no `SupplierAssignment` rows | **MEDIUM** |
-| 14 | Archived Monitor attachments (`is_archived`) resurface as visible documents | **MEDIUM** |
-| 15 | Spec/doc drift + stale artifacts (`placeholder_keys.txt`, README shell behaviour, `processing_mode` spec) | **LOW–MEDIUM** |
+| # | Finding | Severity | Resolution |
+|---|---------|----------|------------|
+| 1 | Services never get `appointment_booked_at` / `appointment_booked_for` / `appointment_intent_recorded_at` — candidate double-booking, wrong stages, blank key dates, dead reminders, inflated KPIs. *Fixed by CT-5717 for resulted (AIR-linked) services; **§1a residual**: booked-but-unresulted appointments still dropped (Path A `requested_test_item_appointments` never exported)* | **HIGH** | **FIXED** — CT-5717 fixed the AIR-linked case; the §1a residual (booked-unattended) is now closed by Task 12 exporting/consuming `requested_test_item_appointments` (see §1a). |
+| 2 | TIRR doctor commentary (`additional_note`, `recommendations`) dropped entirely — spec promised `additional_note` | **HIGH** | **FIXED** (Task 1) — see §2.1. |
+| 3 | Person matching by email alone merges different humans; referral candidate_* then stamped from the wrong Person | **HIGH** | **FIXED** — `0ef1625d` switched `resolve_person!` to resolve by `monitor_person_id` (a faithful 1:1 with the Monitor person), not shared email. |
+| 4 | `next_test_service_item_id`/`next_test_service_variation_id` never set → monitoring list shows "Standard Assessment"; `is_final_result` ignored → exited workers re-enter monitoring | **HIGH** | **FIXED** (Task 2) — see §2.2. |
+| 5 | Unit → component services unimplemented; units mapping 0/58 filled | **HIGH** | **Open — out of scope for this series.** Catalog/unit-mapping work, not a referral-import behaviour; not touched by Tasks 1–10/12. |
+| 6 | Azure `referral_documents` land with unfetchable `file_path` (no byte-copy/convert step exists) | **HIGH** | **Open — out of scope for this series.** `import_candidate_document!` still falls back to the raw MS-Graph `document_id` for Azure-hosted docs (no `storage_path`); no byte-copy/convert-to-PDF step exists. Version-latest-only selection (Task 10) is a separate, now-fixed concern (§3, `referral_documents` row). |
+| 7 | Person with in-flight newest cycle vanishes from client monitoring list (`next_test_date` only set on completed active cycle) | **MEDIUM** | **FIXED** (Task 2, holder rule) — see §2.2. |
+| 8 | Cancelled test requests resurrected as active in-progress referrals; cancelled/no-show appointments can stamp `appointment_attended_at`; `unconfirmed` → `completed` status mapping | **MEDIUM** | **FIXED** — cancelled-cycle resurrection fixed by Task 3 (§3 table row); appointment status map (incl. `unconfirmed`) fixed by Task 4 (§3 table row). The cancelled/no-show-stamps-`appointment_attended_at` sub-issue (§5) was not part of this series and remains open. |
+| 9 | Delta export (`UPDATED_SINCE`) blind to Person, TIRR-level attachment, NextTest, AppointmentItemResult, InvoicingEntity changes | **MEDIUM** | **Open — out of scope for this series.** `DELTA_CHILD_CLASSES` now also covers `RequestedTestItemAppointment` (added alongside Task 12's export), but Person, TIRR-level attachments, NextTest, AppointmentItemResult, and InvoicingEntity watermarks are still not covered. |
+| 10 | Re-import gotchas: duplicate Contacts via phone normalization mismatch; `\|\|=` fields frozen; doctor unassignment not cleared | **MEDIUM** | **Open — out of scope for this series.** `import_relationships!` still dedups on raw (non-normalized) phone; `assign_doctor!` still early-returns without clearing a previously-imported `assigned_doctor_id`/`assigned_doctor_at` when `doctor_unassigned_at` is newly present on re-import. |
+| 11 | RESET crashes on referrals with post-import `BillingAttempt`/`LineItem`/chat rows (purge script handles them; RESET doesn't) | **MEDIUM** | **Open — out of scope for this series.** `reset!`/`purge_migrated_children!` still only clear `exception_signals`, `Nudge`, migrated services, and migrated history — no `BillingAttempt`/`LineItem`/chat-row clearing. |
+| 12 | `cached_billing_total_cents` nil → client "Total spend" shows $0 for migrated history | **MEDIUM** | **Documented skip** — now called out explicitly in `billing-migration.md` §Open items as an accepted consequence of the no-rebilling decision (no line items migrated, nothing to total). Not fixed; now documented. |
+| 13 | `appointment_fulfilment_mode` left `booked_only` for walk-in items; no `SupplierAssignment` rows | **MEDIUM** | **FIXED for AIR-linked services** (CT-5717, prior to this series — see status update above). Not re-touched by Tasks 1–10/12. |
+| 14 | Archived Monitor attachments (`is_archived`) resurface as visible documents | **MEDIUM** | **FIXED** (Task 5) — see §3 table row. |
+| 15 | Spec/doc drift + stale artifacts (`placeholder_keys.txt`, README shell behaviour, `processing_mode` spec) | **LOW–MEDIUM** | **Partially addressed.** This documentation pass (Task 11) updates `related-data.md`, `billing-migration.md`, and `referrals-field-mapping.md` to match current behaviour, closing the `processing_mode` spec drift specifically (§2.4 / §9). Stale artifacts (`placeholder_keys.txt`) and the parallel-import/README drift noted in §9 were not touched. |
 
 ---
 
@@ -59,6 +61,19 @@ All findings verified against code (file:line refs are to `carelever_assessment`
 
 ### 1a. Residual HIGH gap (added 2026-07-03): booked-but-not-yet-resulted appointments are dropped entirely
 
+> **RESOLVED (Task 12, 2026-07-03):** `requested_test_item_appointments` (Path A,
+> below) is now exported and consumed as a fallback/UNION linkage alongside the
+> existing `appointment_item_results` path (Path B). A booked-but-unresulted
+> appointment now resolves to its cycle's service via the RTIA → RTIA →
+> appointment chain even with zero `appointment_item_results` rows, so it gets
+> `appointment_booked_at`/`appointment_booked_for` like any other linked
+> appointment. **Still not carried across from this link:** the per-link
+> `appointment_booked_at`/`appointment_ended_at` timestamp columns on
+> `requested_test_item_appointments` itself are not read — the target
+> `Service#appointment_booked_at` continues to derive from the linked Monitor
+> `Appointment#created_at`, not from these two fields. See
+> `related-data.md` (skip list) and `referrals-field-mapping.md`.
+
 Monitor has **two** appointment↔test linkages:
 
 - **Path B — `appointment_item_results`** (AppointmentItem → TIRR): created at **result time** — `AppointmentItemResult` is created at result entry, or at appointment creation only when a `TestItemReferralFormGroupResult` already exists (monitor:`app/commands/v3/appointments/create.rb:136-146`, `test_item_referral_results/update_linking.rb:40`); its `after_create_commit` writes `result_date` (monitor:`app/models/appointment_item_result.rb:29`). **This is the only path the migration uses** (`appointment_lookup`, `import_appointments!`).
@@ -80,24 +95,52 @@ Remediation options: export Path A (`requested_test_item_appointments`) and use 
 
 ### 2.1 Doctor commentary dropped — HIGH
 
+> **FIXED (Task 1).** TIRR `additional_note`/`recommendations` now land on
+> `service.doctor_notes`/`service.doctor_recommendations`, with a
+> referral-level aggregate rolled up as well. Doctor portal review, HS report,
+> and FFW report now render commentary. Documented in `related-data.md`
+> (Result + outcome field mapping table).
+
 Monitor TIRR `additional_note` (monitor:`db/schema.rb:2671`) and `recommendations` (string array, `:2665`) are exported via `.attributes` but the import references neither (grep: zero hits). `related-data.md:41` explicitly promises `additional_note` → "referral_notes or service note"; `recommendations` isn't documented anywhere. Referral-level `doctor_notes`/`doctor_recommendations`/`doctor_restrictions`/`doctor_medical_considerations` stay nil. Readers rendering empty: doctor portal review (`doctor_reviews/detail_serializer.rb:25-28`), Health Monitoring report PDF (`health_monitoring_report_service.rb:181-187,240-243`), Fitness-for-Work report (`fitness_for_work_report_service.rb:130-138`), AI context providers. **Outcome renders with no commentary anywhere, and the text isn't preserved even as a note.**
 
 ### 2.2 Next-test identity and monitoring-list correctness — HIGH
 
+> **FIXED (Task 2).** `next_test_service_item_id`/`next_test_service_variation_id`
+> now resolve via the catalog map (WARN + date-only fallback when unmapped).
+> `is_final_result` is now checked on the **latest completed TIRR** and clears
+> next-test fields when true. The in-flight-newest-cycle-vanishes-from-monitoring
+> bug is fixed by a new **holder rule**: `next_test_*` lands on the main
+> (newest) cycle when completed, else the newest *completed* cycle — so an
+> in-flight newest cycle no longer strands the computed due date with no
+> holder. `due_date` is now the min `next_tests.date` across **all** resulted
+> TIRRs in the program, not just the latest one. Documented in
+> `related-data.md` §2.
+
 - `next_test_service_item_id` / `next_test_service_variation_id` never set (import sets only `next_test_date`, `referrals_import.rb:747, 974-977`) despite `related-data.md` §2 mapping both. Client monitoring list falls back to **"Standard Assessment"** for every migrated row (`v1/client/health_monitoring/index.rb:107-109`); doctor HS panel and FFW report also read them.
 - **`is_final_result` ignored** (monitor:`schema.rb:2674`): `related-data.md` §2 says final result ⇒ leave next-test fields null (worker exited program). Import takes min `next_tests.date` regardless — an exited worker re-enters the client monitoring list with a future due date.
 - **In-flight newest cycle ⇒ person vanishes from monitoring list** (MEDIUM): `next_test_date` is assigned only in the completed branch for the active cycle (`:747` sits in the `else`); `V1::Client::HealthMonitoring::Query` requires `processing_mode: completed` + `next_test_date NOT NULL` (`query.rb:39-64`). Until the migrated in-flight cycle completes in Assessment, that person is absent from the employer monitoring list. Spec flags the query dependency but doesn't resolve this.
-- `next_tests` per-row detail (per-test-item due dates, `classification` additional/previous_result/evaluation, offsets) reduced to a single min date (LOW–MEDIUM, partially a documented decision).
+- `next_tests` per-row detail (per-test-item due dates, `classification` additional/previous_result/evaluation, offsets) reduced to a single min date (LOW–MEDIUM, partially a documented decision). **Still true post-fix** — the holder rule fixes *which cycle* carries the single computed date, not the reduction of per-test-item detail to one date; that remains an accepted, documented simplification.
 
 ### 2.3 Other referral columns
 
-- **`cached_billing_total_cents` nil** (MEDIUM): client insights total/monthly spend excludes nil (`v1/client/insights/compute.rb:233-243`) → **$0 spend for the entire migrated history** although services are `billed`. Consistent with no-rebilling, but undocumented in `billing-migration.md`.
-- **`previous_referral_id` never chained** across a person's cycle-referrals (LOW): comparative insights (spirometry/audiometry baselines) and re-refer prefill read it — migrated multi-cycle history won't drive cross-cycle comparisons.
-- `overall_determination`, `doctor_outcome_submitted_at`, `doctor_review_started_at` nil (LOW–MEDIUM): HS report determination line + doctor-review key date blank; no functional breakage (timeline and doctor-portal access key off `doctor_outcome_finalised_at`, which is set; `AutoFinalizeDoctorOutcomeJob` guarded by `submitted_at` so it never fires on migrated rows).
-- **`positions` resolution is silent** (LOW): `position_title_for` returns nil without a WARN when the Position id doesn't resolve (`referrals_import.rb:893-898`), unlike other unresolved lookups. Depends on Phase 0/1 `positions_import.rb` having run.
-- `referrals.type_date` (monitor: when a referral was archived/on-hold) not migrated and not in the documented skip table — archived shells lose "when monitoring ceased" (LOW–MEDIUM).
+- **`cached_billing_total_cents` nil** (MEDIUM): client insights total/monthly spend excludes nil (`v1/client/insights/compute.rb:233-243`) → **$0 spend for the entire migrated history** although services are `billed`. Consistent with no-rebilling. **Documented** (no longer undocumented) — `billing-migration.md` §Open items now states this explicitly as an accepted consequence.
+- **`previous_referral_id` never chained** across a person's cycle-referrals (LOW): comparative insights (spirometry/audiometry baselines) and re-refer prefill read it — migrated multi-cycle history won't drive cross-cycle comparisons. **FIXED (Task 8)** — chains each Monitor program's cycle-referrals oldest → newest. Documented in `referrals-field-mapping.md`.
+- `overall_determination`, `doctor_outcome_submitted_at`, `doctor_review_started_at` nil (LOW–MEDIUM): HS report determination line + doctor-review key date blank; no functional breakage (timeline and doctor-portal access key off `doctor_outcome_finalised_at`, which is set; `AutoFinalizeDoctorOutcomeJob` guarded by `submitted_at` so it never fires on migrated rows). **Documented as intentional** (Task 11) — now explicit rows in `referrals-field-mapping.md` rather than only called out here. Behaviour itself was already correct/intentional; this is a doc-only close.
+- **`positions` resolution is silent** (LOW): `position_title_for` returns nil without a WARN when the Position id doesn't resolve (`referrals_import.rb:893-898`), unlike other unresolved lookups. Depends on Phase 0/1 `positions_import.rb` having run. **FIXED (Task 9)** — now WARNs (`UNRESOLVED position … — position_title left nil`) when the Position id doesn't resolve.
+- `referrals.type_date` (monitor: when a referral was archived/on-hold) not migrated and not in the documented skip table — archived shells lose "when monitoring ceased" (LOW–MEDIUM). **FIXED (Task 9)** — archived-shell `cycle_date` (and thus `referral_completed_at`) now derives from `referrals.type_date`, falling back to `created_at`. Documented in `related-data.md`.
 
 ### 2.4 `processing_mode` for in-progress cycles is not what the script sets
+
+> **FIXED (Task 7).** The import now seeds in-flight (non-cancelled) cycles
+> with `processing_mode: "fully_automated"`, matching
+> `referrals-field-mapping.md` (the spec/code divergence this section
+> originally flagged is closed). Services' own signal evaluation may still
+> legitimately re-derive `attention_required` if an unresolved
+> `ExceptionSignal` exists — that behaviour is unchanged and expected, not a
+> bug. The specific shell edge this section called out (an active shell with
+> no services stuck in `attention_required` forever) is fixed by the
+> `fully_automated` seed, since nothing re-derives a shell with no services.
+> Documented in `referrals-field-mapping.md` (`processing_mode` row).
 
 The hardcoded `"attention_required"` (`referrals_import.rb:736`) is **overwritten during the import itself**: each in-progress `Service.create!` fires `evaluate_signals` → `update_processing_mode!` → `ProcessingModes::Derive`, which returns `attention_required` only if an unresolved ExceptionSignal exists, else `fully_automated` (`signals/evaluate_service.rb:17-18`, `derive.rb:13-39`). So the persisted mode depends on which IssueDefinitions are active in the target DB. It also diverges from the spec (`referrals-field-mapping.md:66` says in-flight = `fully_automated`). `completed` **is** stable (checked before signals; `billing_completed_at` + terminal services hold it). Shell edge: an active shell stays `attention_required` forever with nothing actionable; a completed archived shell would derive `fully_automated` if anything ever re-derived it (nothing does today) — fragile but latent.
 
@@ -105,22 +148,22 @@ The hardcoded `"attention_required"` (`referrals_import.rb:736`) is **overwritte
 
 ## 3. Monitor source data silently dropped (not documented as skips)
 
-| Item | Source | What's lost | Severity |
-|------|--------|-------------|----------|
-| TIRR `additional_note`, `recommendations` | monitor:`schema.rb:2665,2671` | Doctor/result commentary (see §2.1) | HIGH |
-| `requested_test_item_assessments` cancellation fields (`cancelled_at/by`, `cancellation_reason`, `booking_delay_reason`, `result_delay_reason`, `status`) | monitor:`schema.rb:1976-1999` | (a) cancellation audit gone; (b) **behavioral**: an RA whose test requests were all cancelled has no resulted TIRR → imports as an *in-progress* `attention_required` cycle — cancelled work resurrected as live | MEDIUM–HIGH |
-| Appointment statuses `attended`, `unconfirmed` missing from `APPOINTMENT_STATUS_MAP` (`referrals_import.rb:1011-1021`) | monitor:`app/models/appointment.rb:42` | Both default to `"completed"`. `attended→completed` defensible; `unconfirmed→completed` wrong for booked-but-future appointments on in-progress cycles (should be pending/confirmed). Map keys `pending/scheduled/clinic_unavailable` are values Monitor never emits — dead keys masking this | MEDIUM–HIGH |
-| `appointments.comments` (non-cancelled) | monitor:`schema.rb:268` | Used only as `cancellation_notes`; booking comments otherwise lost. Same bucket: `is_walk_in`, appointment-level `notification_mode`, `status_last_updated_by_user_name` (appointment sub-spec is a declared future PR, but these are exported-and-dropped today) | MEDIUM |
-| `attachments.is_archived` not honoured | monitor:`schema.rb:293` | Archived (hidden) Monitor attachments become fully visible `candidate_documents` — deleted-in-spirit data resurfaces | MEDIUM |
-| `attachments.notes` → `candidate_documents.notes` | monitor:`schema.rb:294` | Column exists on target and spec §4a lists it; `import_candidate_document!` never writes it | MEDIUM |
-| `people.seg_id` (Similar Exposure Group), `people.division_id` | monitor:`schema.rb:1453,1464-1465` | Core HS exposure-group context; no landing spot and no documented decision | MEDIUM |
-| `referral_activities` bundle section | export `:326` | **Entirely unused by the import** (only `logs` drive history). Monitor workflow/stage timeline deferral is implicit at best; dead weight in every bundle | MEDIUM |
-| `invoicing_entities.invoicing_name`, `recipient_emails[1..]` | monitor:`schema.rb:946-948` | Formal invoicing name unused (`name` used); only first billing recipient email kept | MEDIUM–LOW |
-| TIRR `screen_outcome` / `from_screen` | monitor:`schema.rb:2669-2670` | Screen provenance of results lost | LOW–MEDIUM |
-| `requested_assessments.requested_by_id/name` | monitor:`schema.rb:1955-1956` | Per-cycle requester attribution collapsed to shell `created_by_id` | LOW–MEDIUM |
-| `requested_test_item_appointments` (not exported at all) | monitor:`schema.rb:1963-1974` | The **booking-time** RA↔appointment link. ~~Linkage survives via `appointment_item_results`~~ — **correction 2026-07-03**: AIR rows exist only once resulted, so for booked-unattended cycles the linkage does NOT survive → see §1a (upgraded to HIGH) | **HIGH** (was LOW–MEDIUM) |
-| `logs.is_private` ignored | monitor:`schema.rb:1065` | A `client_note` flagged private imports as client-visible (`:1723` derives visibility from category alone) | LOW |
-| `referral_documents` `creator_name/email`; version chains flattened (all versions imported, not latest-only per spec §4b) | monitor:`schema.rb:1832-1834` | No author on migrated docs; superseded versions duplicated | LOW |
+| Item | Source | What's lost | Severity | Resolution |
+|------|--------|-------------|----------|------------|
+| TIRR `additional_note`, `recommendations` | monitor:`schema.rb:2665,2671` | Doctor/result commentary (see §2.1) | HIGH | **FIXED (Task 1)** — see §2.1. |
+| `requested_test_item_assessments` cancellation fields (`cancelled_at/by`, `cancellation_reason`, `booking_delay_reason`, `result_delay_reason`, `status`) | monitor:`schema.rb:1976-1999` | (a) cancellation audit gone; (b) **behavioral**: an RA whose test requests were all cancelled has no resulted TIRR → imports as an *in-progress* `attention_required` cycle — cancelled work resurrected as live | MEDIUM–HIGH | **Behavioral part FIXED (Task 3):** a cycle where every RTIA is cancelled and nothing resulted now imports as **cancelled history** (`cancelled_at`, `cancellation_reason: "other"`, `cancellation_notes`) instead of live in-progress work; an unresulted TIRR husk referenced only by cancelled RTIAs is dropped. **Cancellation audit text FIXED**: reason/cancelled-by text is preserved in `cancellation_notes`. **Documented skip (unchanged):** `booking_delay_reason`, `result_delay_reason`, `status`, and durations are still not migrated — see `related-data.md` skip list. |
+| Appointment statuses `attended`, `unconfirmed` missing from `APPOINTMENT_STATUS_MAP` (`referrals_import.rb:1011-1021`) | monitor:`app/models/appointment.rb:42` | Both default to `"completed"`. `attended→completed` defensible; `unconfirmed→completed` wrong for booked-but-future appointments on in-progress cycles (should be pending/confirmed). Map keys `pending/scheduled/clinic_unavailable` are values Monitor never emits — dead keys masking this | MEDIUM–HIGH | **FIXED (Task 4).** `APPOINTMENT_STATUS_MAP` now mirrors Monitor's actual enum exactly (`attended cancelled confirmed no_show rescheduled unconfirmed completed late_cancelled`) with no dead keys. `unconfirmed` resolves by whether the appointment is in the future (→ `pending`) or past (→ `completed`). An unknown status now WARNs instead of silently defaulting. |
+| `appointments.comments` (non-cancelled) | monitor:`schema.rb:268` | Used only as `cancellation_notes`; booking comments otherwise lost. Same bucket: `is_walk_in`, appointment-level `notification_mode`, `status_last_updated_by_user_name` (appointment sub-spec is a declared future PR, but these are exported-and-dropped today) | MEDIUM | **Documented skip (unchanged).** Still deferred to the appointment sub-spec PR; not part of this series. Now explicit in `related-data.md`'s skip list rather than only noted here. |
+| `attachments.is_archived` not honoured | monitor:`schema.rb:293` | Archived (hidden) Monitor attachments become fully visible `candidate_documents` — deleted-in-spirit data resurfaces | MEDIUM | **FIXED (Task 5).** An archived Monitor attachment is never imported; if a previously-imported copy exists, it's destroyed on re-import. The destroy is scoped by `referral_id` + `document_type` + `file_path` (a follow-up fix so it doesn't collide across differently-classified copies of the same underlying file). |
+| `attachments.notes` → `candidate_documents.notes` | monitor:`schema.rb:294` | Column exists on target and spec §4a lists it; `import_candidate_document!` never writes it | MEDIUM | **FIXED (Task 5).** `notes` is now written on both the create path and the existing-record backfill path. |
+| `people.seg_id` (Similar Exposure Group), `people.division_id` | monitor:`schema.rb:1453,1464-1465` | Core HS exposure-group context; no landing spot and no documented decision | MEDIUM | **Open product decision.** No Assessment landing spot exists; not migrated. Now explicitly documented as an open decision (not a silent gap) in `related-data.md`'s skip list. |
+| `referral_activities` bundle section | export `:326` | **Entirely unused by the import** (only `logs` drive history). Monitor workflow/stage timeline deferral is implicit at best; dead weight in every bundle | MEDIUM | **Documented skip (unchanged).** Still exported-but-unused; kept in the bundle intentionally for a future timeline PR. Now explicit in `related-data.md`'s skip list rather than implicit. |
+| `invoicing_entities.invoicing_name`, `recipient_emails[1..]` | monitor:`schema.rb:946-948` | Formal invoicing name unused (`name` used); only first billing recipient email kept | MEDIUM–LOW | **Documented skip (unchanged).** Only `name` + the first recipient email are used; now explicit in `related-data.md`'s skip list. |
+| TIRR `screen_outcome` / `from_screen` | monitor:`schema.rb:2669-2670` | Screen provenance of results lost | LOW–MEDIUM | **FIXED (Task 9).** Preserved in `service.result_data["monitor_screen"]`. Documented in `related-data.md` §1. |
+| `requested_assessments.requested_by_id/name` | monitor:`schema.rb:1955-1956` | Per-cycle requester attribution collapsed to shell `created_by_id` | LOW–MEDIUM | **`requested_by_id` FIXED (Task 9):** now resolves the per-cycle `requested_assessments.requested_by_id` first, falling back to the shell's `created_by_id` only when the per-cycle requester doesn't resolve. **`requested_by_name` remains a documented skip** — the name itself is not migrated, only the id-based resolution. |
+| `requested_test_item_appointments` (not exported at all) | monitor:`schema.rb:1963-1974` | The **booking-time** RA↔appointment link. ~~Linkage survives via `appointment_item_results`~~ — **correction 2026-07-03**: AIR rows exist only once resulted, so for booked-unattended cycles the linkage does NOT survive → see §1a (upgraded to HIGH) | **HIGH** (was LOW–MEDIUM) | **FIXED (Task 12).** Now exported and consumed as the booking-time linkage (UNION'd with the existing `appointment_item_results` path), closing the §1a residual for booked-unattended cycles. **Remaining documented skip:** the per-link `appointment_booked_at`/`appointment_ended_at` timestamp fields on this join are still not read — the target `Service#appointment_booked_at` continues to derive from the linked Monitor `Appointment#created_at`. |
+| `logs.is_private` ignored | monitor:`schema.rb:1065` | A `client_note` flagged private imports as client-visible (`:1723` derives visibility from category alone) | LOW | **FIXED (Task 6).** A private (`is_private: true`) `client_note` now imports with `client_visible: false` instead of always true. **Currently dead code** in this app's schema: `referral_notes.client_visible` doesn't exist yet as a column (verified against `db/schema.rb`), so every `client_note` still imports as an internal-only note today — the logic is correct and will activate once that column lands. Import preflight WARNs when the column is absent. |
+| `referral_documents` `creator_name/email`; version chains flattened (all versions imported, not latest-only per spec §4b) | monitor:`schema.rb:1832-1834` | No author on migrated docs; superseded versions duplicated | LOW | **Version-chain flattening FIXED (Task 10):** only the latest version per `referral_drive_item_id` is imported (by `version` int, `created_at` as tiebreak); superseded versions are no longer duplicated. **`creator_name`/`creator_email` remain a documented skip** — no author column exists on `candidate_documents`. |
 
 Verified **documented** skips (not gaps): legacy `evaluations`/`results` (pure pre-TIRR files skipped), `result_evaluations` scoring, billing line items/sales orders (`billing-migration.md` defers; import correctly marks terminal `billed` and creates nothing), logs category `log`, `availability_*`, `latest_log_*`, `home_address`, forms. Enum index orderings in the import (`MONITOR_RELATIONSHIP_NAMES`, `MONITOR_LOG_CATEGORIES`, `MONITOR_REFERRAL_TYPES`, sex map) all verified correct against Monitor models.
 
