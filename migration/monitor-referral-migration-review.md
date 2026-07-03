@@ -9,13 +9,15 @@
 
 All findings verified against code (file:line refs are to `carelever_assessment` unless prefixed `monitor:` = `carelever_monitoring`).
 
+> **Status update 2026-07-03:** since this review, `CT-5717` (#591) stamped booking timestamps + `appointment_fulfilment_mode` + `SupplierAssignment` on migrated services (findings #1/#13), and `0ef1625d` switched person resolution to `monitor_person_id` (finding #3). **Residual HIGH gap remains** for booked-but-not-yet-resulted appointments — see §1a. Line refs below are as of the original review; the import has shifted.
+
 ---
 
 ## TL;DR — ranked findings
 
 | # | Finding | Severity |
 |---|---------|----------|
-| 1 | Services never get `appointment_booked_at` / `appointment_booked_for` / `appointment_intent_recorded_at` — candidate double-booking, wrong stages, blank key dates, dead reminders, inflated KPIs | **HIGH** |
+| 1 | Services never get `appointment_booked_at` / `appointment_booked_for` / `appointment_intent_recorded_at` — candidate double-booking, wrong stages, blank key dates, dead reminders, inflated KPIs. *Fixed by CT-5717 for resulted (AIR-linked) services; **§1a residual**: booked-but-unresulted appointments still dropped (Path A `requested_test_item_appointments` never exported)* | **HIGH** |
 | 2 | TIRR doctor commentary (`additional_note`, `recommendations`) dropped entirely — spec promised `additional_note` | **HIGH** |
 | 3 | Person matching by email alone merges different humans; referral candidate_* then stamped from the wrong Person | **HIGH** |
 | 4 | `next_test_service_item_id`/`next_test_service_variation_id` never set → monitoring list shows "Standard Assessment"; `is_final_result` ignored → exited workers re-enter monitoring | **HIGH** |
@@ -55,7 +57,18 @@ All findings verified against code (file:line refs are to `carelever_assessment`
 
 **Suggested fix shape** (when implemented): in `import_appointments!`, stamp `appointment_intent_recorded_at` + `appointment_booked_at` (proxy: Monitor appointment `created_at`, else `scheduled_at`) and `appointment_booked_for` (the tz-local instant already computed at `:1071`) on all linked services via `update_columns` — including completed ones.
 
-### Related service-level gaps (MEDIUM)
+### 1a. Residual HIGH gap (added 2026-07-03): booked-but-not-yet-resulted appointments are dropped entirely
+
+Monitor has **two** appointment↔test linkages:
+
+- **Path B — `appointment_item_results`** (AppointmentItem → TIRR): created at **result time** — `AppointmentItemResult` is created at result entry, or at appointment creation only when a `TestItemReferralFormGroupResult` already exists (monitor:`app/commands/v3/appointments/create.rb:136-146`, `test_item_referral_results/update_linking.rb:40`); its `after_create_commit` writes `result_date` (monitor:`app/models/appointment_item_result.rb:29`). **This is the only path the migration uses** (`appointment_lookup`, `import_appointments!`).
+- **Path A — `requested_test_item_appointments`** (RequestedTestItemAssessment `has_many :appointments, through:`, monitor:`app/models/requested_test_item_assessment.rb:45-46`): the **booking-time** link, exists before results. **Never exported** (not in `PRELOAD`) **and never consumed.**
+
+Consequence for a genuinely in-flight cycle (booked, not yet attended/resulted): the appointment row is in the bundle (`referral.appointments`), but with no `appointment_item_results` it maps to no migrated service → `import_appointments!` skips it ("no items map to a migrated service"), and `booking_timestamps_for` (CT-5717) returns `{}` — so **exactly the live subset the booking-timestamp fix targets still gets no appointment/`appointment_booked_for`**, `evaluate_signals` can fabricate the "appointment not booked" signal, and the referral lands in awaiting-booking KPIs despite being booked in Monitor. Severity scales with how many booked-unattended referrals are in the migration set at cutover.
+
+Remediation options: export Path A (`requested_test_item_appointments`) and use it as a fallback linkage, or match `appointment_items` to the cycle's services by `tenancy_test_item_detail_id` when no `appointment_item_results` row exists.
+
+### Related service-level gaps (MEDIUM) — *remediated by CT-5717 for AIR-linked services*
 
 - **`appointment_fulfilment_mode`** left at DB default `booked_only`; live creation paths set it from the catalog item (`v1/shared/referrals/create.rb:247`, `create_bundle_components.rb:40`). Monitor items mapped to walk-in-only catalog items migrate bookable: shown in candidate booking wizard (`eligibility.rb:82-86` only excludes `walk_in_only`), internal unbooked list, wrong pill. (Booking signals are rescued by the `booking_walk_in_only?` fallback at `dynamic_rule.rb:121-125`.)
 - **No `SupplierAssignment` rows** (live paths: `internal/appointments/create.rb:262`, `candidate/booking/confirm.rb:151-153`). Client insights "Top Clinics" excludes all migrated work (`insights/compute.rb:115-121`); supplier display fallback and supplier-scoped issue definitions degrade; `Appointment#clinic_unavailable_only_for_internal` misclassifies migrated appointments as internal (`appointment.rb:225-231`).
@@ -105,7 +118,7 @@ The hardcoded `"attention_required"` (`referrals_import.rb:736`) is **overwritte
 | `invoicing_entities.invoicing_name`, `recipient_emails[1..]` | monitor:`schema.rb:946-948` | Formal invoicing name unused (`name` used); only first billing recipient email kept | MEDIUM–LOW |
 | TIRR `screen_outcome` / `from_screen` | monitor:`schema.rb:2669-2670` | Screen provenance of results lost | LOW–MEDIUM |
 | `requested_assessments.requested_by_id/name` | monitor:`schema.rb:1955-1956` | Per-cycle requester attribution collapsed to shell `created_by_id` | LOW–MEDIUM |
-| `requested_test_item_appointments` (not exported at all) | monitor:`schema.rb:1963-1974` | Booked/ended timestamps of the RA↔appointment link (linkage itself survives via `appointment_item_results`) | LOW–MEDIUM |
+| `requested_test_item_appointments` (not exported at all) | monitor:`schema.rb:1963-1974` | The **booking-time** RA↔appointment link. ~~Linkage survives via `appointment_item_results`~~ — **correction 2026-07-03**: AIR rows exist only once resulted, so for booked-unattended cycles the linkage does NOT survive → see §1a (upgraded to HIGH) | **HIGH** (was LOW–MEDIUM) |
 | `logs.is_private` ignored | monitor:`schema.rb:1065` | A `client_note` flagged private imports as client-visible (`:1723` derives visibility from category alone) | LOW |
 | `referral_documents` `creator_name/email`; version chains flattened (all versions imported, not latest-only per spec §4b) | monitor:`schema.rb:1832-1834` | No author on migrated docs; superseded versions duplicated | LOW |
 
