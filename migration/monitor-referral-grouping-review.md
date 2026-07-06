@@ -118,6 +118,12 @@ P1 and P2.
 3. **Both RA-backed and result-only TIRRs are peers** in one clustering pass —
    no ordered pass-1/pass-2 with a "consumed" set.
 4. **Keys derive from member ids**, never from dates or thresholds.
+5. **Status fidelity to Monitor.** A migrated cycle is in-progress **iff**
+   Monitor still has open work behind it. Grouping must never flip a status:
+   no Monitor-open request may be swallowed into a completed referral, and no
+   in-progress referral may exist without open Monitor work. (See §"Cycle
+   status" — this constrains both the completion rule and which atoms may
+   merge.)
 
 ### Constants
 
@@ -151,7 +157,9 @@ against real tenancy data before the bulk run.
 
 **Step 3 — merge (union-find over atoms of the same program)**
 
-Merge atoms A, B when **any** rule fires, subject to the span cap:
+Merge atoms A, B when **any** rule fires, subject to the span cap **and the
+status barrier** (atoms of different open/resulted status never merge —
+see §"Cycle status"):
 
 | # | Rule | Fires when | Solves |
 |---|---|---|---|
@@ -183,12 +191,98 @@ Per merged component:
     from the date-bucket key** (fixes P4; stable under any threshold tuning)
   - undated result-only bucket → `result:{monitor_referral_id}:{min tirr id}`
     likewise
-- `in_progress` = no member TIRR resulted (unchanged)
+- `in_progress` / completed — see next subsection
 - `cycle_date` = min result date, else min RA created (unchanged)
 - `created_date` / `ra_created_date` = as today
 
 `main_cycle_key`, shell/pre-TIRR handling, emission, billing safeguard: all
 unchanged.
+
+### Cycle status — in-progress vs completed
+
+**Requirement (principle 5):** mimic Monitor's in-progress population exactly.
+Every Monitor referral with open work must own ≥1 in-progress Assessment
+cycle-referral covering that open work; no Assessment referral may be
+in-progress without open Monitor work behind it; no Monitor-open request may
+land inside a completed referral. Counts are not 1:1 (one Monitor referral
+fans out to N cycle-referrals, and one visit's several RAs collapse into one),
+so the invariant is **per Monitor referral / per open request**, verified by
+the §6 reconciliation — not by comparing two grand totals.
+
+**Atom status** (computed in step 2):
+
+- **RA atom — open**: the request has outstanding work — ≥1 RTIA whose TIRR is
+  missing or unresulted (`resulted?` false: no outcome, no evaluation).
+- **RA atom — resulted**: every RTIA has a resulted TIRR.
+- **Result-only atom — always resulted** (unresulted leftovers never become
+  atoms, unchanged).
+
+**Status barrier (new in v2):** rules (a)/(b)/(c) only merge atoms of the
+**same status**. Every merged component is therefore homogeneous:
+
+> open component → **in-progress** · resulted component → **completed**
+
+This deliberately changes two behaviours — one of which ships in v1 today —
+because both leak Monitor-open work into completed referrals:
+
+| Leak | Where it exists | Effect |
+|---|---|---|
+| "Any resulted" completion | **today's v1** (`referrals_import.rb:399,407`) — completed when *any* member TIRR is resulted | Partially resulted RA (2 tests requested, 1 resulted) — still an outstanding request in Monitor — imports as completed |
+| Cross-status merge | today's pass-1 rule-(b), and the earlier draft of this doc ("promotion") | Open RA merged with a resulted RA/TIRR (3-day window / shared appointment / result affinity) disappears into a completed referral while Monitor still shows the open request |
+
+v2 closes both: **"all RTIAs resulted" replaces "any TIRR resulted"**, and the
+barrier applies to every rule — including rule (a). A genuinely same-visit
+pair where one test's result was never entered stays as **two** referrals
+(one completed, one in-progress). That split is the honest picture of
+Monitor's state, and it self-heals: once the open side is resulted in Monitor,
+both atoms are resulted and the next purge+re-import merges them normally.
+
+Status by component composition:
+
+| Component | Status | vs today |
+|---|---|---|
+| open RA atom(s), nothing resulted | **in-progress** | unchanged |
+| open RA atom(s), partially resulted | **in-progress** | **changed** — today completed via "any resulted" |
+| resulted RA atom(s) ± adopted result-only atoms | **completed** | unchanged |
+| result-only atom(s) | **completed** | unchanged |
+| shell (no atoms at all) | in-progress unless source archived | unchanged (`shell_cycle`, `:469`) |
+
+What status drives downstream (mechanics unchanged — listed because the two
+fixes above move cycles between the branches):
+
+- **in-progress** → `processing_mode = "attention_required"`; services
+  `unbilled` with booking timestamps (billing advances naturally in
+  Assessment); no `referral_completed_at`; wins the clean reference number in
+  `main_cycle_key` (in-progress always beats completed).
+- **completed** → `processing_mode = "completed"`; `referral_completed_at` /
+  `billing_completed_at` = `cycle_date`; referral `doctor_outcome` / notes /
+  recommendations from member TIRRs; services `billed`; only completed cycles
+  are next-test-holder eligible.
+- **Archived Monitor referrals drop in-progress cycles** (`:320`) — consistent
+  with fidelity: archived = monitoring ceased, Monitor no longer counts that
+  work as open. (Note: strict status moves *more* cycles into the in-progress
+  bucket, so archived referrals now drop partially resulted cycles too —
+  their resulted history survives only via other resulted cycles or the
+  completed shell. If that's unacceptable, carve out archived referrals to
+  keep the v1 "any resulted" rule — decide from the §6 counts.)
+
+Consequences of strict status to resolve before implementation:
+
+1. **Partially resulted in-progress cycles carry already-resulted services.**
+   `build_service!` currently branches per *cycle*; under strict status a
+   resulted TIRR can sit inside an in-progress cycle and must keep its result
+   data (outcome, `results_received_at`) while staying `unbilled` — a
+   per-TIRR branch, the main implementation delta. If Monitor already billed
+   that visit, flag for reconciliation (referral-grouping.md §In-progress
+   already requires this).
+2. **Stale open RAs stay in-progress forever** (request from years back whose
+   last test was never entered). That *is* Monitor's state — fidelity says
+   migrate it as-is — but if the §6 count is large, agree a business cutoff
+   explicitly rather than silently completing them.
+3. **Unresulted TIRRs with no RA remain excluded** (unchanged). If Monitor
+   counts any of these as open work, they surface in the §6 reconciliation as
+   Monitor-open-without-Assessment-in-progress — review that diff, don't
+   assume it's zero.
 
 ### Why this shape (alternatives considered)
 
@@ -212,25 +306,34 @@ unchanged.
   distinct events. `MAX_CYCLE_SPAN_DAYS` bounds the damage; if pre-flight
   shows programs with sub-weekly cadence, add a per-program window override
   (map keyed by `tenancy_monitoring_item_detail_id`).
-- **Split-guard on partially resulted clusters**: rule (b)'s veto needs both
-  windows. Two close requests where one side is still unresulted merge, as
-  today — an in-progress side has no result window to contradict the merge.
+- **Cross-status pairs never merge** (status barrier): one visit whose results
+  were entered for only some of its RAs is emitted as two referrals until the
+  open side results. Chosen deliberately — status fidelity to Monitor
+  (principle 5) outranks visit-level dedup, and the split self-heals on
+  re-import once both sides are resulted.
+- **More in-progress referrals than v1** would have produced: partially
+  resulted RAs and cross-status neighbours now land in-progress. This is the
+  point (they are open in Monitor), but it grows the "Awaiting Action"
+  workload in Assessment on day one — size it with §6 before the bulk run.
 
 ---
 
 ## 5. Worked examples (today vs v2)
 
-| Scenario | Today | v2 |
-|---|---|---|
-| RA Mon + RA Wed, resulted 2025-03-10 / 2025-06-20 (P1) | 1 cycle | **2 cycles** — rule (b) vetoed (102d > 30d), rule (c) fails |
-| RA Mon + RA Wed, resulted 03-10 / 03-12 | 1 cycle | 1 cycle — rule (b) holds (2d ≤ 30d) |
-| RA cycle resulted 03-10 + manual TIRR (no RA) resulted 03-11, same program (P2) | 2 referrals | **1 cycle** — rule (c), key stays `requested_assessment:{id}` |
-| RA TIRR + non-RA TIRR on the **same appointment** | 2 referrals | 1 cycle — rule (a) |
-| Two RAs 6 days apart, TIRRs share one appointment (false split) | 2 cycles | **1 cycle** — rule (a) |
-| Two manual TIRRs resulted 23:50 / next-day 00:30 UTC (P3) | 2 referrals | 1 cycle — rule (c) |
-| Two in-progress RAs 2 days apart | 1 cycle | 1 cycle — rule (b), unchanged |
-| Same program, RAs a year apart (annual re-test) | 2 cycles | 2 cycles — unchanged |
-| Monthly D&A screens, manual entry, 30d cadence | 1 referral per day | 1 per event — 30d gap > 7d rule (c); span cap as backstop |
+| Scenario | Today | v2 | v2 status |
+|---|---|---|---|
+| RA Mon + RA Wed, resulted 2025-03-10 / 2025-06-20 (P1) | 1 cycle | **2 cycles** — rule (b) vetoed (102d > 30d), rule (c) fails | completed + completed |
+| RA Mon + RA Wed, resulted 03-10 / 03-12 | 1 cycle | 1 cycle — rule (b) holds (2d ≤ 30d) | completed |
+| RA cycle resulted 03-10 + manual TIRR (no RA) resulted 03-11, same program (P2) | 2 referrals | **1 cycle** — rule (c), key stays `requested_assessment:{id}` | completed |
+| Fully resulted RA TIRR + non-RA TIRR on the **same appointment** | 2 referrals | 1 cycle — rule (a) | completed |
+| Two fully resulted RAs 6 days apart, TIRRs share one appointment (false split) | 2 cycles | **1 cycle** — rule (a) | completed |
+| Two manual TIRRs resulted 23:50 / next-day 00:30 UTC (P3) | 2 referrals | 1 cycle — rule (c) | completed |
+| Two open RAs 2 days apart | 1 cycle | 1 cycle — rule (b), both open so barrier allows | **in-progress** |
+| **Open** RA whose TIRR shares an attended appointment with a resulted manual TIRR | 2 referrals | **2 referrals — status barrier** (merges on re-import once the RA results) | in-progress + completed — mirrors Monitor |
+| Resulted RA + open RA created 2 days apart, same program | **1 completed cycle** (open request hidden) | **2 cycles — status barrier** | completed + **in-progress** — mirrors Monitor |
+| RA with 2 tests requested, 1 resulted, 1 outstanding | **1 completed referral** ("any resulted") | 1 cycle (RA atomic) | **in-progress** — strict "all RTIAs resulted" rule |
+| Same program, RAs a year apart (annual re-test) | 2 cycles | 2 cycles — unchanged | per cycle: completed if fully resulted, else in-progress |
+| Monthly D&A screens, manual entry, 30d cadence | 1 referral per day | 1 per event — 30d gap > 7d rule (c); span cap as backstop | completed |
 
 ---
 
@@ -259,10 +362,34 @@ orphans = TestItemReferralResult
 # Cadence check — per monitoring item, median gap between consecutive resulted
 # TIRRs of the same (referral, program): any program with median < 14d needs a
 # per-program override before rule (c) is safe.
+
+# Strict-status deltas — cycles that flip completed→in-progress under
+# "all RTIAs resulted" (§4 Cycle status). Two sub-populations:
+#   (i) partially resulted RAs (≥1 resulted TIRR AND ≥1 outstanding RTIA)
+#  (ii) RAs with resulted TIRRs but RTIAs never linked to a TIRR at all
+# If (ii) dominates and is data noise rather than real open work, refine
+# "open" to require an *unresulted linked* TIRR.
+partial = unlinked = 0
+RequestedAssessment.includes(requested_test_item_assessments: :test_item_referral_result).find_each do |ra|
+  rtias    = ra.requested_test_item_assessments
+  tirrs    = rtias.map(&:test_item_referral_result)
+  resulted = tirrs.compact.count { |t| t.cascaded_outcome_detail_name.present? || t.result_evaluation_id.present? }
+  next if resulted.zero? || resulted == rtias.size
+  tirrs.any?(&:nil?) ? unlinked += 1 : partial += 1
+end
+# Also count how old the open side is (created_at histogram) — sizes the
+# "stale open RA" population for the business-cutoff decision.
 ```
 
 Also rerun the fallback-population counts from `referral-grouping.md`
 §"Results without an appointment" — that's the population rule (c) acts on.
+
+**Post-import reconciliation (fidelity check, run after every bulk import):**
+the set of non-archived Monitor referral ids with ≥1 open RA must equal the
+set of `monitor_referral_id`s owning ≥1 migrated in-progress referral
+(`processing_mode = "attention_required"`). Diff **both directions**; every
+mismatch is either a fidelity bug or a documented exclusion (archived
+referral, unresulted no-RA TIRR) — nothing else is acceptable.
 
 ---
 
@@ -288,9 +415,14 @@ Also rerun the fallback-population counts from `referral-grouping.md`
 - **Docs to update on adoption**: `specs/referral-grouping.md` (granularity +
   fallback sections), `cycle-referral-grouping-data-model.md` §"Cycle boundary
   rules" + examples, `TESTING-REFERRALS.md` cases.
-- **Log/observability**: emit an import log line whenever rule (b)'s veto or
-  the span cap fires — these are exactly the ambiguous files a human should
-  spot-check after the bulk run.
+- **Log/observability**: emit an import log line whenever (i) rule (b)'s veto
+  fires, (ii) the span cap blocks a merge, or (iii) the **status barrier**
+  blocks a merge that another rule wanted (a cross-status same-visit pair kept
+  split for fidelity) — these are exactly the ambiguous files a human should
+  spot-check after the bulk run. Then run the §6 post-import reconciliation.
+- **`build_service!` per-TIRR branch** (strict-status consequence, §4): a
+  resulted TIRR inside an in-progress cycle keeps its result data but stays
+  `unbilled`; flag for billing reconciliation if Monitor already billed it.
 
 ---
 
@@ -299,6 +431,10 @@ Also rerun the fallback-population counts from `referral-grouping.md`
 Adopt the v2 atom/union-find grouping: appointment identity first, result-date
 proximity second, request-date affinity third with a result-window veto;
 result-only TIRRs cluster as peers instead of a separate fallback pass; keys
-from member ids. Run the §6 queries against production Monitor data to confirm
-`RESULT_GAP_DAYS=7` / `SPLIT_GUARD_DAYS=30` before the bulk migration, and land
-the change together with unit specs for `build_cycles`.
+from member ids. **Status fidelity is a hard constraint**: completed requires
+*all* RTIAs resulted (not any TIRR), and the status barrier stops open atoms
+merging with resulted ones — Monitor's in-progress population maps onto
+Assessment's exactly, verified by the §6 reconciliation. Run the §6 queries
+against production Monitor data to confirm `RESULT_GAP_DAYS=7` /
+`SPLIT_GUARD_DAYS=30` and to size the strict-status flips before the bulk
+migration, and land the change together with unit specs for `build_cycles`.
