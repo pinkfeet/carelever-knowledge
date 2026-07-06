@@ -1,5 +1,20 @@
 # Monitor → Assessment: Cycle Grouping Review & Proposed v2 Logic
 
+**Status: implemented (grouping v2) — commits `1d4fc97e..05a673de`, branch
+`feat/monitor-grouping-v2`; archived = Option 1 (decompose); `RESULT_GAP_DAYS` = 3
+(landed at the tighter fallback in §4, not the 7d default originally proposed
+there — see §4 correction below).** `build_cycles`/`build_atoms`/`merge_atoms`
+now implement the algorithm this doc proposes, in
+`carelever_assessment/script/migrate-monitor/referrals/referrals_import.rb`,
+with unit coverage in
+`carelever_assessment/spec/script/migrate_monitor/referrals_import_grouping_spec.rb`
+(every §5 worked-example row has a spec). The spec doc
+(`carelever_assessment/script/migrate-monitor/specs/referral-grouping.md`) and
+`TESTING-REFERRALS.md` are synced to this behaviour. Sections below are kept as
+the design record; §4 and §5 carry inline corrections where implementation
+diverged from the original sketch (date-recompute bug, same-program
+precondition on the worked examples).
+
 Review of `build_cycles` in
 `carelever_assessment/script/migrate-monitor/referrals/referrals_import.rb`
 (`:371-503`) — how one Monitor referral is split into N Assessment
@@ -190,9 +205,18 @@ P1 and P2.
 | Constant | Proposed default | Meaning |
 |---|---|---|
 | `REQUEST_GAP_DAYS` | **3** (unchanged) | Max RA `created_at` gap for request-affinity merge |
-| `RESULT_GAP_DAYS` | **7** | Max gap between result/visit windows to merge on result affinity (covers cross-midnight, entry lag, multi-day clinic visits) |
+| `RESULT_GAP_DAYS` | **7** (implemented as **3** — see below) | Max gap between result/visit windows to merge on result affinity (covers cross-midnight, entry lag, multi-day clinic visits) |
 | `SPLIT_GUARD_DAYS` | **30** | Request-affinity merge is vetoed when both sides are resulted and their windows are further apart than this |
 | `MAX_CYCLE_SPAN_DAYS` | **45** | Sanity cap on a merged cycle's window span (guards single-linkage chaining on high-frequency programs, e.g. monthly D&A screens) |
+
+**Implemented value: `RESULT_GAP_DAYS = 3`, not 7.** The §6 pre-flight gate
+below was not run against Monitor prod before this series landed, so the
+implementation took the documented fallback ("if the production distribution
+is inconclusive, land with a tighter value") rather than the 7d default this
+table proposed. `REQUEST_GAP_DAYS`/`SPLIT_GUARD_DAYS`/`MAX_CYCLE_SPAN_DAYS`
+landed exactly as proposed (3/30/45). Revisit `RESULT_GAP_DAYS` only once the
+§6 queries have run against real data — see the post-implementation note in
+`monitor-referral-migration-review.md`.
 
 Defaults are starting points — §6 gives the pre-flight queries to tune them
 against real tenancy data before the bulk run. **The §6 cadence + P2 queries
@@ -279,6 +303,19 @@ never merge; see §"Cycle status"):
   both reference one result row), they stay split and the TIRR is emitted
   **only in the resulted component** — a result row must never produce two
   services. The open side keeps its unresulted RTIAs as outstanding work.
+
+  **Correction found during implementation (`resolve_shared_tirrs!`):** this
+  sketch was incomplete. Stripping the TIRR from the losing (open) cycle is
+  not enough on its own — the losing cycle's `cycle_date`/`created_date` were
+  already computed (in step 4, from the pre-strip TIRR set) and must be
+  **recomputed from its remaining members** after the strip. Without the
+  recompute, a losing cycle keeps a stale `result_date`-derived date that can
+  tie with the keeper's `cycle_date` and flip the `previous_referral_id` chain
+  direction in `chain_cycle_referrals!`. This was caught and fixed during
+  implementation, not anticipated here — see `referral-grouping.md`
+  §"Shared-TIRR ownership" for the corrected behaviour and the
+  `referrals_import_grouping_spec.rb` case that pins it (`open_cycle[:cycle_date]`
+  falls back to the open RA's `created_at`, not the stripped TIRR's `result_date`).
 
 **Step 4 — emit cycles**
 
@@ -469,10 +506,10 @@ Consequences of strict status to resolve before implementation:
 
 ### Trade-offs / accepted risks
 
-- **Two-threshold asymmetry** (30d veto vs 7d adoption) is intentional:
-  request affinity is prior evidence of one visit, so it tolerates lab
-  turnaround variance; a bare result-date coincidence needs to be tight before
-  we claim same-visit.
+- **Two-threshold asymmetry** (30d veto vs 7d adoption — **implemented as 30d
+  veto vs 3d adoption**, §4) is intentional: request affinity is prior evidence
+  of one visit, so it tolerates lab turnaround variance; a bare result-date
+  coincidence needs to be tight before we claim same-visit.
 - **High-frequency programs** (cadence ≤ `RESULT_GAP_DAYS`) could chain-merge
   distinct events. `MAX_CYCLE_SPAN_DAYS` bounds the damage; if pre-flight
   shows programs with sub-weekly cadence, add a per-program window override
@@ -491,6 +528,20 @@ Consequences of strict status to resolve before implementation:
 
 ## 5. Worked examples (today vs v2)
 
+> **Same-program precondition (Task 9 reviewer note, confirmed at implementation):**
+> every row below is scoped **per program** — rules (a)–(d) only ever compare
+> atoms already in the same `(program, status)` bucket (§4 step 3). For the two
+> "two open RAs" rows, that requires the RAs to share a **resolvable** program
+> key up front: `ra_program_key` resolves via `enrolled_item_id` →
+> `tenancy_monitoring_item_detail_id`, or the RA's own first linked TIRR's
+> program, else an **isolating** `ra:{id}` fallback. Two zero-TIRR open RAs
+> with **neither** a shared `enrolled_item_id` nor a linked TIRR each get a
+> unique `ra:{id}` program key and are **never even compared** — no merge, no
+> veto, regardless of date/booking proximity. The "1 cycle" / "2 cycles"
+> outcomes below assume the pair already shares a resolvable program (e.g. a
+> common `enrolled_item_id`), as pinned by the `referrals_import_grouping_spec.rb`
+> "kb §5 worked examples" cases.
+
 | Scenario | Today | v2 | v2 status |
 |---|---|---|---|
 | RA Mon + RA Wed, resulted 2025-03-10 / 2025-06-20 (P1) | 1 cycle | **2 cycles** — rule (b) vetoed (102d > 30d), rule (c) fails | completed + completed |
@@ -499,14 +550,14 @@ Consequences of strict status to resolve before implementation:
 | Fully resulted RA TIRR + non-RA TIRR on the **same appointment** | 2 referrals | 1 cycle — rule (a) | completed |
 | Two fully resulted RAs 6 days apart, TIRRs share one appointment (false split) | 2 cycles | **1 cycle** — rule (a) | completed |
 | Two manual TIRRs resulted 23:50 / next-day 00:30 UTC (P3) | 2 referrals | 1 cycle — rule (c) | completed |
-| Two open RAs 2 days apart | 1 cycle | 1 cycle — rule (b), both open so barrier allows | **in-progress** |
+| Two open RAs 2 days apart, **sharing a resolvable program** (e.g. same `enrolled_item_id`) | 1 cycle | 1 cycle — rule (b), both open so barrier allows | **in-progress** |
 | **Open** RA whose TIRR shares an attended appointment with a resulted manual TIRR | 2 referrals | **2 referrals — status barrier** (merges on re-import once the RA results) | in-progress + completed — mirrors Monitor |
 | Resulted RA + open RA created 2 days apart, same program | **1 completed cycle** (open request hidden) | **2 cycles — status barrier** | completed + **in-progress** — mirrors Monitor |
 | RA with 2 tests requested, 1 resulted, 1 outstanding | **1 completed referral** ("any resulted") | 1 cycle (RA atomic) | **in-progress** — strict "all RTIAs resulted" rule |
 | Same program, RAs a year apart (annual re-test) | 2 cycles | 2 cycles — unchanged | per cycle: completed if fully resulted, else in-progress |
-| Monthly D&A screens, manual entry, 30d cadence | 1 referral per day | 1 per event — 30d gap > 7d rule (c); span cap as backstop | completed |
+| Monthly D&A screens, manual entry, 30d cadence | 1 referral per day | 1 per event — 30d gap > `RESULT_GAP_DAYS` (implemented as 3d, not the 7d this doc originally proposed — see §4); span cap as backstop | completed |
 | Fully-cancelled RA created 2 days from a live open RA, same program | 1 cluster — cancellation swallowed into the live cycle | **2 cycles — status barrier** | in-progress + **cancelled** — cancellation survives as history |
-| Two open RAs 2 days apart, **booked** into visits 60 days apart (RTIApp windows) | 1 cycle | **2 cycles** — rule (b) veto now reaches open atoms via booking windows | in-progress + in-progress |
+| Two open RAs 2 days apart, **sharing a resolvable program**, **booked** into visits 60 days apart (RTIApp windows) | 1 cycle | **2 cycles** — rule (b) veto now reaches open atoms via booking windows | in-progress + in-progress |
 
 ---
 
