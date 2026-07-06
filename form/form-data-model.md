@@ -109,3 +109,4 @@ form_session (belongs_to :service; references form_section_definition)
 - **Service attachment:** `component_form_section_link.rb`
 - **Runtime:** `form_session.rb`, `form_field_response.rb`
 - **Field internals:** `form_field.rb`, `form_option.rb`, `field_validation_rule.rb`
+- **Employer questionnaires (config, gates, flow):** [employer-questionnaire.md](./employer-questionnaire.md)

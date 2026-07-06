@@ -8,7 +8,12 @@ now implement the algorithm this doc proposes, in
 `carelever_assessment/script/migrate-monitor/referrals/referrals_import.rb`,
 with unit coverage in
 `carelever_assessment/spec/script/migrate_monitor/referrals_import_grouping_spec.rb`
-(every §5 worked-example row has a spec). The spec doc
+plus end-to-end synthesis/mixed-cycle cases in `referrals_import_spec.rb` —
+rules (a)–(d), the status barrier, span cap, strict status, archived
+decomposition and open-service synthesis are all covered; most §5
+worked-example rows have a direct rspec case, though the
+cancelled-RA-near-live-RA barrier row is covered by manual test case
+`TESTING-REFERRALS.md` 3f only (no rspec case). The spec doc
 (`carelever_assessment/script/migrate-monitor/specs/referral-grouping.md`) and
 `TESTING-REFERRALS.md` are synced to this behaviour. Sections below are kept as
 the design record; §4 and §5 carry inline corrections where implementation
