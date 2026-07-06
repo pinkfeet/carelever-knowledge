@@ -9,7 +9,7 @@
 
 All findings verified against code (file:line refs are to `carelever_assessment` unless prefixed `monitor:` = `carelever_monitoring`).
 
-> **Status update 2026-07-03:** since this review, `CT-5717` (#591) stamped booking timestamps + `appointment_fulfilment_mode` + `SupplierAssignment` on migrated services (findings #1/#13), and `0ef1625d` switched person resolution to `monitor_person_id` (finding #3). **Residual HIGH gap remains** for booked-but-not-yet-resulted appointments — see §1a. Line refs below are as of the original review; the import has shifted.
+> **Status update 2026-07-06:** the gap-remediation commit series (`d2ac5a94..7ed7be53`) addressed most findings below and the spec docs were re-synced (`e138a6c9`). See **§0 Re-review** for the fixed/still-open/new breakdown. Line refs in the original sections are as of the original review; the import has shifted substantially.
 >
 > **Status update 2026-07-03 (later): gap-remediation series (Tasks 1–10, 12) landed.** Every §2/§3 finding below is now marked with its resolution. Most HIGH/MEDIUM data-coverage findings are **FIXED**; a small number are accepted **documented skips** (delay/audit metadata, appointment sub-spec fields, invoicing entity secondary fields, document author strings) or an explicit **open product decision** (`people.seg_id`/`division_id` — no landing spot designed yet). Findings outside the referral-field/related-data/billing specs (ops tooling, delta-export coverage, re-import idempotency, Azure document byte-copy, unit→component catalog mapping) were **not** in scope for this series and remain open — see the per-item notes below.
 
@@ -34,6 +34,55 @@ All findings verified against code (file:line refs are to `carelever_assessment`
 | 13 | `appointment_fulfilment_mode` left `booked_only` for walk-in items; no `SupplierAssignment` rows | **MEDIUM** | **FIXED for AIR-linked services** (CT-5717, prior to this series — see status update above). Not re-touched by Tasks 1–10/12. |
 | 14 | Archived Monitor attachments (`is_archived`) resurface as visible documents | **MEDIUM** | **FIXED** (Task 5) — see §3 table row. |
 | 15 | Spec/doc drift + stale artifacts (`placeholder_keys.txt`, README shell behaviour, `processing_mode` spec) | **LOW–MEDIUM** | **Partially addressed.** This documentation pass (Task 11) updates `related-data.md`, `billing-migration.md`, and `referrals-field-mapping.md` to match current behaviour, closing the `processing_mode` spec drift specifically (§2.4 / §9). Stale artifacts (`placeholder_keys.txt`) and the parallel-import/README drift noted in §9 were not touched. |
+
+---
+
+## 0. Re-review after the remediation series (2026-07-06)
+
+Re-review of `292f97ca..7ed7be53` (17 commits) plus the export change. All claims below verified against current code.
+
+### 0.1 Fixed (verified in code, specs re-synced in `e138a6c9`)
+
+| Original finding | Fix | Commit |
+|---|---|---|
+| #1 booking timestamps, #13 fulfilment mode + SupplierAssignment | `booking_timestamps_for` goes into the **create** attrs (so `evaluate_signals` never fabricates "not booked"); `fulfilment_mode_for` derives from catalog `booking_type` (walk-in verified); `SupplierAssignment.insert_all` (unique index verified; `insert_all` deliberately skips the `AffiliateFeeService` callback) | `d2ac5a94` (CT-5717) |
+| §1a Path A linkage | `requested_test_item_appointments` exported (+ delta class) and consumed (`tirr_appointment_ids`: RTIApp → RTIA → TIRR, discarded links excluded; unioned with AIR path in `appointment_infos_for` and `import_appointments!`) — **but see N1 below: only helps when a TIRR exists** | `a98ce103` |
+| #2 doctor commentary | TIRR `additional_note` → `services.doctor_notes` + referral-level rollup; `recommendations` array → `doctor_recommendations` (plain-texted, joined) | `d90446cf` |
+| #3 person merge | `Person.find_or_initialize_by(monitor_person_id:)` — faithful 1:1; unique partial index verified (`schema.rb:2100`); demographics refreshed from the bundle every run | `eb1d1bd6` |
+| #4 next-test identity / `is_final_result`, #7 in-flight vanish | `next_test_state_for` maps the due row's test item via the catalog (non-fatal WARN on unmapped); `is_final_result` on the latest resulted TIRR ⇒ all next_test_* nil; `next_test_holder_key` = main-if-completed else newest completed cycle; `assign_next_test_state!` always reassigns (stale-on-demotion fixed too) | `7355dc1c` |
+| #8 cancelled requests resurrected | RTIAs partitioned live/cancelled; husk TIRRs (unresulted, referenced only by cancelled requests) dropped; fully-cancelled cycles land as **cancelled history** (`cancelled_at` = max RTIA cancelled_at, reason `other` — enum verified, per-request audit text in `cancellation_notes`); excluded from `main_cycle_key` / holder / chaining | `204f81f4`, `c0758bb0`, `12981d37` |
+| #8 status map | `attended`/`unconfirmed` handled faithfully (`unconfirmed` is time-split: future → `pending`, past → `completed`); dead keys removed; unknown statuses WARN | `c16a06ca` |
+| #14 archived attachments, A5 notes | `is_archived` docs skipped + previously-imported copies destroyed (S3-safe — see N7); `attachments.notes` → `candidate_documents.notes` | `edc75981`, `ee5c22e9` |
+| B13 `logs.is_private` | private `client_note` stays internal | `a681052d` |
+| 1.10 processing_mode drift | in-flight cycles seed `fully_automated` per field map (comment documents the Derive interplay; active shells no longer pinned in `attention_required`) | `39c58b7f` |
+| 2.3 `previous_referral_id` | per-program oldest→newest chaining with `monitor_cycle_key` tiebreak; cancelled cycles excluded and cleared | `17e0e029`, `c0758bb0` |
+| A6 doc versions | latest version per `referral_drive_item_id` only (spec §4b) | `e735131c` |
+| B10/B6/B11 + silent position nil | `from_screen`/`screen_outcome` → `result_data.monitor_screen`; archived shell `cycle_date` from `type_date`; `created_by_id` from per-cycle `requested_by_id` first; `position_title_for` WARNs | `78babb21` |
+| §6 frozen `||=` lifecycle fields | lifecycle columns (`processing_mode`, completion, cancellation, doctor outcome/commentary) now **always assigned** via a post-save `update_columns` — re-import flips cycle roles cleanly | `12981d37`, `7ed7be53` |
+
+### 0.2 New findings (this re-review)
+
+- **N1 — HIGH (residual of §1a): booked-but-unresulted cycles still lose their appointment and booking state.** Monitor creates TIRRs only at **result entry** (`TestItemReferralResults::Create` via the results controller; Screen-import `v3/referrals/create_form.rb`) — never at booking. `RTIA.test_item_referral_result_id` is populated only from an already-existing form-group result (monitor:`requested_test_item_assessments/create.rb:15-18`). So a genuinely booked-unattended cycle = RA + RTIAs (nil TIRR id) + appointment + RTIApp links, **zero TIRRs** → `build_cycles` emits an in-progress cycle with no TIRRs → **zero services** → `import_appointments!` skips the appointment ("no items map to a migrated service") and there is no service to carry booking timestamps. The `a98ce103` Path-A fix only rescues TIRR-exists-without-AIR cases (e.g. resulted without an appointment selected). **Remediation:** synthesize in-progress services from live (uncancelled) RTIAs — they carry `test_item_detail_id`, which resolves through the same catalog map — then RTIApp links the appointment naturally. Sizeable at cutover: every referral in the booked-or-attended-but-not-yet-resulted window. *(Also a grouping-v2 concern: open atoms with zero TIRRs — see grouping review.)*
+- **N2 — LOW-MEDIUM: all-cancelled referral loses its verbatim reference number.** `main_cycle_key` excludes cancelled cycles; when **every** cycle is cancelled it returns nil → every cycle-referral gets the `-suffix` form and `demote_stale_verbatim_references!` demotes any previously-verbatim row. No referral holds Monitor's reference verbatim. Decide if acceptable.
+- **N3 — LOW-MEDIUM: migrated `attended` appointments stay "in-workflow" forever.** Assessment `scope :active` includes `attended` (`appointment.rb:110` — slot/shift utilisation, affiliate counts). Live flow eventually moves appointments to `completed`; the import leaves Monitor-`attended` appointments as `attended` even on completed/billed cycles. Consider mapping attended → `completed` when the owning cycle is completed.
+- **N4 — LOW: preflight doesn't check the new columns.** `preflight!` still validates only `monitor_cycle_key`/`monitor_referral_id`/`result_data`/`result_config`; a missing `people.monitor_person_id`, `referrals.previous_referral_id` or `next_test_service_item_id` migration fails every file with `StatementInvalid` instead of failing fast.
+- **N5 — LOW (product): faithful 1:1 person mapping can duplicate humans.** A person who already exists natively in Assessment (e.g. via Screen) with the same email now gets a **second** Person row keyed by `monitor_person_id`; post-cutover, `PersonMatchingService` may attach new native referrals to either → split person history. Deliberate trade-off of `eb1d1bd6`; surface to product.
+- **N6 — LOW: Monitor is canonical for demographics on every re-import.** `resolve_person!` hard-assigns name/DOB/phone/email each run — an Assessment-side correction to a migrated Person is clobbered by the next delta import. Fine during the migration window; note for after cutover.
+- **N7 — verified safe:** the archived-document `destroy_all` cannot delete Monitor's S3 objects — CarrierWave's delete targets `{env}/CandidateDocuments/{referral}/{type}/…`, which never matches the Monitor storage key the row actually points at (delete of a nonexistent key is a no-op).
+- **N8 — LOW: `cycle_cancelled_at` epoch fallback** can stamp `cancelled_at = 1970-01-01` when no RTIA timestamp and no RA created_at parses; renders as a nonsense cancellation date.
+- **N9 — LOW: cross-run chain staleness.** `chain_cycle_referrals!` only touches referrals imported by the current file run; if a source change removes/renames a cycle, previously imported siblings keep old `previous_referral_id` pointers until a RESET re-import.
+
+### 0.3 Still open from the original review
+
+- **1.1** unit → component services (units mapping still 0/58; `catalog_mapping.placeholder_keys.txt` still present though test items are 472/472).
+- **1.3** Azure `referral_documents` byte-copy/convert step — still no fetch path for MS-Graph `document_id` rows.
+- **§6** Contact dedup on re-import: `find_or_create_by!(owner:, email:, phone:)` still queries with the raw `+61…` form while `normalizes_phone` stores `0…` → duplicate Contacts/relationships on re-import.
+- **1.5** `assign_doctor!` still early-returns on `doctor_unassigned_at` — stale doctor kept on re-import over an existing row; no `doctor_unassigned` activity.
+- **A4** relationship `notify_via_email/sms`, `is_primary`, `preferred_channel` still not derived.
+- **1.7** delta export still blind to Person, TIRR-level attachments, NextTest, AppointmentItemResult changes (`RequestedTestItemAppointment` was added).
+- **§8** RESET vs purge blockers asymmetry (BillingAttempt etc.) unchanged.
+- **2.3** `cached_billing_total_cents` (now a documented skip), **1.6** history `action_by` → user resolution, **B1** `referral_activities` bundle section still exported-but-unused, **B5** appointment comments (non-cancelled), **B9** `invoicing_name`/`recipient_emails[1..]`.
+- Cycle grouping (`build_cycles`) automated spec coverage — still thin; grouping v2 is the next change task (see [monitor-referral-grouping-review.md](monitor-referral-grouping-review.md)).
 
 ---
 
